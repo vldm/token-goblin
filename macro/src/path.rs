@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use proc_macro::Span;
+use proc_macro2::Span;
 
 use crate::Result;
 

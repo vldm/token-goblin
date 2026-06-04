@@ -8,19 +8,49 @@
 
 use std::path::{Path, PathBuf};
 
-use proc_macro::Span;
+use proc_macro2::Span;
 
 use crate::{
     Result,
+    errors::AnyError,
     path::{manifest_path, search_for_parent_manifest},
 };
+type TomlTable = toml::map::Map<String, toml::Value>;
+
+// Whether value set, or uses workspace version
+pub enum ValueOrWorkspace {
+    Value(toml::Value),
+    Workspace { extra: TomlTable },
+}
+impl ValueOrWorkspace {
+    fn from_value(value: toml::Value) -> Result<Self> {
+        Ok(if is_workspace(&value) {
+            let extra = value
+                .as_table()
+                .ok_or_else(|| error!(Span::call_site() => "Failed to convert to table"))?
+                .clone();
+            Self::Workspace { extra }
+        } else {
+            Self::Value(value)
+        })
+    }
+}
+
+/// Returns true if dependency has `workspace` field.
+pub fn is_workspace(value: &toml::Value) -> bool {
+    match value {
+        toml::Value::Table(table) => table.contains_key("workspace"),
+        _ => false,
+    }
+}
 
 pub struct Metadata {
     pub dependencies: Vec<Dependency>,
 }
 impl Metadata {
-    fn from_manifest(manifest_path: &PathBuf) -> Result<Self> {
-        let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(manifest_path)?)?;
+    fn from_manifest(manifest_path: &Path) -> Result<Self> {
+        let manifest: toml::Value = read_toml_file(manifest_path)?;
+
         let dependencies = manifest
             .get("build-dependencies")
             .and_then(|v| v.as_table())
@@ -30,9 +60,9 @@ impl Metadata {
         let dependencies = dependencies
             .iter()
             .map(|(name, value)| {
-                Dependency::new(name.clone(), manifest_path.clone(), value.clone())
+                Dependency::new(name.clone(), manifest_path.to_path_buf(), value.clone())
             })
-            .collect();
+            .collect::<Result<Vec<Dependency>>>()?;
         Ok(Metadata { dependencies })
     }
     fn try_resolve_workspace_dependency(
@@ -47,7 +77,8 @@ impl Metadata {
             else {
                 return Err(error!(Span::call_site() => "Workspace dependency not found"));
             };
-            dependency.value = workspace_dependency.clone();
+            // TODO: add extra knowledge from workspace dependency.
+            dependency.value = ValueOrWorkspace::from_value(workspace_dependency.clone())?;
         }
         Ok(())
     }
@@ -70,22 +101,21 @@ pub struct Dependency {
     pub name: String,
     /// Save `Cargo.toml` location in case if `path` version is used.
     pub rel_path: PathBuf,
-    pub value: toml::Value,
+    pub value: ValueOrWorkspace,
 }
 
 impl Dependency {
-    pub fn new(name: String, rel_path: PathBuf, value: toml::Value) -> Self {
-        Self {
+    pub fn new(name: String, rel_path: PathBuf, value: toml::Value) -> Result<Self> {
+        Ok(Self {
             name,
             rel_path,
-            value,
-        }
+            value: ValueOrWorkspace::from_value(value)?,
+        })
     }
-    /// Returns true if dependency has `workspace` field.
-    pub fn is_workspace(&self) -> bool {
-        match self.value {
-            toml::Value::Table(ref table) => table.contains_key("workspace"),
-            _ => false,
+    fn is_workspace(&self) -> bool {
+        match &self.value {
+            ValueOrWorkspace::Value(_) => false,
+            ValueOrWorkspace::Workspace { extra: _ } => true,
         }
     }
 }
@@ -121,10 +151,16 @@ pub fn load_dependencies() -> Result<Metadata> {
 // Try load file
 // Return `Some` if `workspace` key exists.
 fn extract_workspace_manifest(path: &Path) -> Result<Option<toml::Value>> {
-    let manifest: toml::Value = toml::from_str(&std::fs::read_to_string(path)?)?;
+    let manifest: toml::Value = read_toml_file(path)?;
 
     if manifest.get("workspace").is_some() {
         return Ok(Some(manifest));
     }
     Ok(None)
+}
+
+fn read_toml_file(path: &Path) -> Result<toml::Value> {
+    std::fs::read_to_string(path)
+        .and_then(|s| Ok(toml::from_str(&s)?))
+        .map_err(|e| syn::Error::new(Span::call_site(), e.to_string()))
 }

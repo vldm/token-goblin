@@ -1,0 +1,3 @@
+[workspace]
+members = ["dylib-test", "some-test"]
+resolver = "3"

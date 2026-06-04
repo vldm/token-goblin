@@ -71,12 +71,18 @@ dependencies = [
 name = "token-goblin-macro"
 version = "0.1.0"
 dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
  "toml",
 ]
 
 [[package]]
 name = "token-goblin-runtime"
 version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+]
 
 [[package]]
 name = "toml"

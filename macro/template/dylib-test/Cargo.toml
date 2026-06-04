@@ -1,0 +1,15 @@
+[workspace]
+
+[package]
+name = "generated-crate" #{{crate_name}}
+version = "0.1.0"
+edition = "2024"
+
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+token-goblin-runtime = { path = "../../runtime" } # "0.1"
+
+# {{dependencies}}
