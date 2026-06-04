@@ -1,0 +1,3 @@
+[workspace]
+members = ["token-goblin", "macro", "runtime"]
+resolver = "3"
