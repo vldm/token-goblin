@@ -20,3 +20,13 @@ output: `TokenStream`, `String`, print directly to stdout.
 5. Should use cargo build-cache and can work with `cache-proc-macros`.
 6. macro declaration should generate `rust-analyzer` shim for better type information.
 7. Support workspace dependencies.
+
+
+## Compare with other solutions
+
+### crabtime
+- Recompile each macro on call site
+- Need 
+
+### inline-proc
+- No simple one function macro. 
