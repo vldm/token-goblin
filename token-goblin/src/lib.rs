@@ -2,7 +2,7 @@
 
 pub use token_goblin_macro::munch;
 
-#[munch(foo=bar)]
+#[munch(split_cache = true)]
 fn foo(v: TokenStream) -> TokenStream {
     v
 }

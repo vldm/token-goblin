@@ -8,6 +8,7 @@ use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::str::FromStr;
 
 use proc_macro2::{Span, TokenStream};
 
@@ -19,6 +20,16 @@ pub enum BuildProfile {
     Debug,
     #[default]
     Release,
+}
+impl FromStr for BuildProfile {
+    type Err = syn::Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "debug" => Ok(BuildProfile::Debug),
+            "release" => Ok(BuildProfile::Release),
+            _ => Err(error!(Span::call_site() => "Unknown build profile: {}", s)),
+        }
+    }
 }
 
 impl BuildProfile {
@@ -56,6 +67,7 @@ pub struct GeneratedCrate {
     pub crate_name: String,
     /// Stable hash of template inputs used to build this crate.
     pub source_hash: String,
+
 }
 
 impl GeneratedCrate {

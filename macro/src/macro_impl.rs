@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
@@ -38,30 +38,89 @@ impl syn::parse::Parse for ProxyInput {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DebugMode {
     /// Source macro is expected to produce items and we can emit extra items with debug information.
-    Items,
+    Item,
     /// Source macro is expected to produce expression so we need to wrap extra items into a block.
     Expression,
+}
+impl FromStr for DebugMode {
+    type Err = syn::Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "item" => Ok(DebugMode::Item),
+            "expression" | "expr" => Ok(DebugMode::Expression),
+            _ => Err(error!(Span::call_site() => "Unknown debug mode: {}", s)),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Config {
-    pub cache: bool,
     pub split_cache: bool,
+    pub profile: BuildProfile,
     pub debug: Option<DebugMode>,
 }
+
+impl syn::parse::Parse for Config {
+    // parse key=value, comma separated pairs,
+    // boolean values can skip arguments
+    // debug provided as ident, either `item` or `expr`
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut config = Self::default();
+        while !input.is_empty() {
+            let key = input.parse::<syn::Ident>()?;
+            let value = if input.peek(syn::Token![=]) {
+                input.parse::<syn::Token![=]>()?;
+                input.parse::<syn::Lit>()?
+            } else {
+                syn::Lit::Bool(syn::LitBool::new(true, key.span()))
+            };
+
+            match key.to_string().as_str() {
+                "split_cache" => config.split_cache = lit_to_bool(value)?,
+                "profile" => {
+                    config.profile =
+                        lit_to_string(value).and_then(|s| BuildProfile::from_str(&s))?;
+                }
+                "debug" => {
+                    config.debug =
+                        Some(lit_to_string(value).and_then(|s| DebugMode::from_str(&s))?);
+                }
+                _ => return Err(error!(key.span() => "Unknown key: {}", key)),
+            }
+
+            if input.is_empty() {
+                break;
+            }
+            input.parse::<syn::Token![,]>()?;
+        }
+        Ok(config)
+    }
+}
+fn lit_to_bool(lit: syn::Lit) -> Result<bool> {
+    match lit {
+        syn::Lit::Bool(lit) => Ok(lit.value()),
+        _ => Err(error!(Span::call_site() => "Expected boolean value")),
+    }
+}
+fn lit_to_string(lit: syn::Lit) -> Result<String> {
+    match lit {
+        syn::Lit::Str(lit) => Ok(lit.value()),
+        _ => Err(error!(Span::call_site() => "Expected string value")),
+    }
+}
+
 impl Config {
     fn from_attrs(args: TokenStream) -> Result<Self> {
         debug!("args: {}", args);
-        let config = Config::default();
-        Ok(config)
+        syn::parse2(args)
     }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            cache: true,
             split_cache: false,
+            profile: BuildProfile::Release,
             debug: None,
         }
     }
@@ -98,7 +157,7 @@ fn function_impl(config: Config, mut item: syn::ItemFn) -> Result<TokenStream> {
         .join("generated")
         .join(name.to_string());
     let generated = template::render_crate(&output_dir, &context, config.split_cache)?;
-    let dylib = dylib::compile_crate(&generated, BuildProfile::Release)?;
+    let dylib = dylib::compile_crate(&generated, config.profile)?;
 
     debug!("generated crate: {}", generated.source_dir.display());
 
