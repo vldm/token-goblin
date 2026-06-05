@@ -57,6 +57,14 @@ fn function_impl(config: Config, item: syn::ItemFn) -> Result<TokenStream> {
     };
 
     debug!("out: {}", out);
+    debug!("env vars: {}", get_env_vars()?);
     Ok(out)
 }
 
+fn get_env_vars() -> Result<String> {
+    let env_vars = std::env::vars()
+        .map(|(key, value)| format!("{}={}", key, value))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Ok(env_vars)
+}

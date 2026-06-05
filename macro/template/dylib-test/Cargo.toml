@@ -1,10 +1,10 @@
 [workspace]
 
 [package]
-name = "generated-crate" #{{crate_name}}
+name = "generated-crate" #{{package.name}}
 version = "0.1.0"
 edition = "2024"
-
+# {{package.extra}}
 
 [lib]
 crate-type = ["dylib"]
