@@ -56,21 +56,24 @@ impl GeneratedCrate {
         source_dir: PathBuf,
         per_project_cache: bool,
         crate_name: impl Into<String>,
-    ) -> Result<Self> {
-        let build_dir = path::build_dir(&source_dir, per_project_cache)?;
-        Ok(Self {
+    ) -> Self {
+        let build_dir = path::build_dir(&source_dir, per_project_cache);
+        Self {
             source_dir,
             build_dir,
             crate_name: crate_name.into(),
-        })
+        }
     }
 
     pub fn manifest_path(&self) -> PathBuf {
         self.source_dir.join("Cargo.toml")
     }
+    pub fn target_dir(&self) -> PathBuf {
+        self.source_dir.join("target")
+    }
 
     pub fn dylib_path(&self, profile: BuildProfile) -> PathBuf {
-        dylib_path(&self.build_dir, profile, &self.crate_name)
+        dylib_path(&self.target_dir(), profile, &self.crate_name)
     }
 }
 
@@ -98,8 +101,8 @@ pub fn dylib_filename(package_name: &str) -> String {
 }
 
 /// Resolve the expected dylib path under a build cache directory.
-pub fn dylib_path(build_dir: &Path, profile: BuildProfile, package_name: &str) -> PathBuf {
-    build_dir
+pub fn dylib_path(target_dir: &Path, profile: BuildProfile, package_name: &str) -> PathBuf {
+    target_dir
         .join(profile.subdir())
         .join(dylib_filename(package_name))
 }
@@ -124,6 +127,8 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
     cmd.arg("build")
         .arg("--manifest-path")
         .arg(&manifest_path)
+        .arg("--target-dir")
+        .arg(generated.target_dir())
         .env("CARGO_BUILD_BUILD_DIR", &generated.build_dir);
     if let Some(flag) = profile.cargo_release_flag() {
         cmd.arg(flag);

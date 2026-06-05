@@ -51,18 +51,18 @@ impl Metadata {
     fn from_manifest(manifest_path: &Path) -> Result<Self> {
         let manifest: toml::Value = read_toml_file(manifest_path)?;
 
-        let dependencies = manifest
+        let dependencies = match manifest
             .get("build-dependencies")
             .and_then(|v| v.as_table())
-            .ok_or_else(
-                || error!(Span::call_site() => "build-dependencies section is not found"),
-            )?;
-        let dependencies = dependencies
-            .iter()
-            .map(|(name, value)| {
-                Dependency::new(name.clone(), manifest_path.to_path_buf(), value.clone())
-            })
-            .collect::<Result<Vec<Dependency>>>()?;
+        {
+            Some(dependencies) => dependencies
+                .iter()
+                .map(|(name, value)| {
+                    Dependency::new(name.clone(), manifest_path.to_path_buf(), value.clone())
+                })
+                .collect::<Result<Vec<Dependency>>>()?,
+            None => Vec::new(),
+        };
         Ok(Metadata { dependencies })
     }
     fn try_resolve_workspace_dependency(

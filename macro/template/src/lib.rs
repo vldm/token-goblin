@@ -15,5 +15,5 @@ pub fn entry(input: TokenStream) -> TokenStream {
     //  "custom_types"  => { let (c,) = input.split(); impls::custom_types(c.convert()?)},
     //   v              => error!("Goblin proxy error: unexpected macro name: {v}"),
     // }
-    { { entry } }
+    // goblin-stencil: entry
 }

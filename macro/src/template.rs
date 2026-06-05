@@ -1,0 +1,194 @@
+//! Materialize generated dylib crates from checked-in templates.
+//!
+//! Simple line based template engine:
+//! - Find `MARKER` in line and replace whole line with
+
+use std::path::{Path, PathBuf};
+
+use crate::{
+    Result,
+    dylib::GeneratedCrate,
+    metadata::{Dependency, Metadata, ValueOrWorkspace},
+};
+
+const MARKER: &str = "goblin-stencil:";
+/// Values substituted into template marker lines.
+pub struct TemplateContext {
+    pub package_name: String,
+    pub package_extra: String,
+    pub source_metadata: Metadata,
+    pub entry: String,
+    pub impls: String,
+}
+
+/// Root directory of the checked-in crate template.
+pub fn template_root() -> PathBuf {
+    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/template"))
+}
+
+/// Render the dylib crate template into `output_dir`.
+pub fn render_crate(
+    output_dir: &Path,
+    context: &TemplateContext,
+    per_project_cache: bool,
+) -> Result<GeneratedCrate> {
+    let template_dir = template_root();
+    render_template_tree(&template_dir, output_dir, context)?;
+
+    Ok(GeneratedCrate::new(
+        output_dir.to_path_buf(),
+        per_project_cache,
+        context.package_name.clone(),
+    ))
+}
+
+fn render_template_tree(
+    template_dir: &Path,
+    output_dir: &Path,
+    context: &TemplateContext,
+) -> Result<()> {
+    for entry in std::fs::read_dir(template_dir).map_err(|e| {
+        error!(
+            "failed to read template dir {}: {e}",
+            template_dir.display()
+        )
+    })? {
+        let entry = entry.map_err(|e| {
+            error!(
+                "failed to read template entry in {}: {e}",
+                template_dir.display()
+            )
+        })?;
+        let src = entry.path();
+        let rel = entry.file_name();
+        let dst = output_dir.join(rel);
+
+        if src.is_dir() {
+            std::fs::create_dir_all(&dst)
+                .map_err(|e| error!("failed to create {}: {e}", dst.display()))?;
+            render_template_tree(&src, &dst, context)?;
+            continue;
+        }
+
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| error!("failed to create {}: {e}", parent.display()))?;
+        }
+
+        let rendered = render_file(&src, context)?;
+        std::fs::write(&dst, rendered)
+            .map_err(|e| error!("failed to write {}: {e}", dst.display()))?;
+    }
+
+    Ok(())
+}
+
+/// Render `build-dependencies` from project metadata into `[dependencies]` TOML.
+fn render_dependencies(metadata: &Metadata) -> Result<String> {
+    metadata
+        .dependencies
+        .iter()
+        .map(render_dependency)
+        .collect::<Result<Vec<_>>>()
+        .map(|lines| lines.join("\n"))
+}
+
+fn render_dependency(dep: &Dependency) -> Result<String> {
+    match &dep.value {
+        ValueOrWorkspace::Value(value) => render_value_dependency(&dep.name, value, &dep.rel_path),
+        ValueOrWorkspace::Workspace { .. } => Err(error!(
+            "dependency `{}` still uses unresolved workspace inheritance",
+            dep.name
+        )),
+    }
+}
+
+fn render_value_dependency(
+    name: &str,
+    value: &toml::Value,
+    manifest_path: &Path,
+) -> Result<String> {
+    let manifest_dir = manifest_path
+        .parent()
+        .ok_or_else(|| error!("manifest path has no parent: {}", manifest_path.display()))?;
+
+    let value = rewrite_dependency_paths(value, manifest_dir, name)?;
+    let mut root = toml::map::Map::new();
+    root.insert(name.to_string(), value);
+    toml::to_string(&root).map_err(|e| error!("{e}"))
+}
+
+// Replace relative paths to absolute paths
+fn rewrite_dependency_paths(
+    value: &toml::Value,
+    manifest_dir: &Path,
+    name: &str,
+) -> Result<toml::Value> {
+    let mut value = value.clone();
+    let toml::Value::Table(table) = &mut value else {
+        return Ok(value);
+    };
+
+    let Some(path) = table.get("path") else {
+        return Ok(value);
+    };
+    let Some(path) = path.as_str() else {
+        return Err(error!("dependency `{name}` path must be a string"));
+    };
+
+    let absolute = manifest_dir.join(path);
+    let absolute = absolute.canonicalize().unwrap_or(absolute);
+    table.insert(
+        "path".to_string(),
+        toml::Value::String(absolute.display().to_string()),
+    );
+    Ok(value)
+}
+
+fn render_file(path: &Path, context: &TemplateContext) -> Result<String> {
+    let file = std::fs::read_to_string(path)
+        .map_err(|e| error!("failed to read template {}: {e}", path.display()))?;
+
+    let mut out = Vec::new();
+    for line in file.lines() {
+        let Some(key) = extract_marker(line) else {
+            out.push(line.to_string());
+            continue;
+        };
+
+        match key.as_str() {
+            "package.name" => out.push(format!("name = \"{}\"", &context.package_name)),
+            "package.extra" => push_fragment(&mut out, &context.package_extra),
+            "dependencies" => {
+                push_fragment(&mut out, &render_dependencies(&context.source_metadata)?);
+            }
+
+            "entry" => push_fragment(&mut out, &context.entry),
+            "impls" => push_fragment(&mut out, &context.impls),
+            other => {
+                return Err(error!(
+                    "unknown stencil marker `{other}` in {}",
+                    path.display()
+                ));
+            }
+        }
+    }
+
+    Ok(out.join("\n"))
+}
+
+fn extract_marker(line: &str) -> Option<String> {
+    let idx = line.find(MARKER)?;
+    let key = line[idx + MARKER.len()..].trim();
+    if key.is_empty() {
+        return None;
+    }
+    Some(key.to_string())
+}
+
+fn push_fragment(out: &mut Vec<String>, fragment: &str) {
+    if fragment.is_empty() {
+        return;
+    }
+    out.extend(fragment.lines().map(str::to_string));
+}

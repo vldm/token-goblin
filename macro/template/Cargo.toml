@@ -1,0 +1,15 @@
+[workspace]
+
+[package]
+name = "generated-crate" # goblin-stencil: package.name
+version = "0.1.0"
+edition = "2024"
+# goblin-stencil: package.extra
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+token-goblin-runtime = { path = "/Users/m5-vladimir/work/module-experiments/runtime" } # "0.1"
+
+# goblin-stencil: dependencies

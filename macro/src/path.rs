@@ -21,13 +21,11 @@ pub fn crate_root() -> Result<PathBuf> {
 /// Returns:
 /// - If `per_project_cache` is `true`, returns `project_dir/build_cache`.
 /// - If `per_project_cache` is `false`, returns `OUT_DIR/build_cache`.
-pub fn build_dir(project_dir: &PathBuf, per_project_cache: bool) -> Result<PathBuf> {
+pub fn build_dir(project_dir: &Path, per_project_cache: bool) -> PathBuf {
     if per_project_cache {
-        return Ok(project_dir.join("build_cache"));
+        return project_dir.join("build_cache");
     }
-    let build_cache = PathBuf::from(crate::OUT_DIR).join("build_cache");
-    let build_cache = PathBuf::from(&build_cache);
-    Ok(build_cache)
+    PathBuf::from(crate::OUT_DIR).join("build_cache")
 }
 
 /// Use `CARGO_MANIFEST_PATH` to get path to Cargo.toml:

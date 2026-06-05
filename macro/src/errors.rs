@@ -2,14 +2,18 @@ pub type AnyError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 // Force throwing error only with span.
 macro_rules! bail {
-    ($span:expr => $($message:tt)*) => {
-        return Err(syn::Error::($span, format!($($message)*)))
+    ($($err:tt)*) => {
+        return Err(error!($($err)*))
     };
+
 }
 
 macro_rules! error {
     ($span:expr => $($message:tt)*) => {
         syn::Error::new( $span, format!($($message)*))
+    };
+    ($($message:tt)*) => {
+        syn::Error::new(proc_macro2::Span::call_site(), format!($($message)*))
     };
 }
 
