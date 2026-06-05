@@ -1,7 +1,17 @@
 // Prelude
 use token_goblin_runtime::*;
 
+// use module to simplify debugging of invalid codegen
+mod generated_rustc_meta {
+    include!(concat!(env!("OUT_DIR"), "/rustc_meta.rs"));
+}
+
 mod impls;
+
+#[unsafe(no_mangle)]
+pub extern "C" fn rustc_version() -> *const std::ffi::c_char {
+    generated_rustc_meta::RUSTC_META.as_ptr().cast()
+}
 
 #[unsafe(no_mangle)]
 pub fn entry(input: TokenStream) -> TokenStream {

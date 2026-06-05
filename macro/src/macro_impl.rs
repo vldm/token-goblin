@@ -6,17 +6,33 @@ use quote::{quote, quote_spanned};
 use crate::{
     Result,
     dylib::{self, BuildProfile},
-    metadata,
+    metadata, path,
     template::{self, TemplateContext},
 };
 
+pub struct ProxyInput {
+    pub dylib_path: syn::LitStr,
+    pub tokens: proc_macro2::TokenStream,
+}
+
+impl syn::parse::Parse for ProxyInput {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(Self {
+            dylib_path: input.parse()?,
+            tokens: input.parse()?,
+        })
+    }
+}
 /// How to emit debug information during macro expansion.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DebugMode {
     /// Source macro is expected to produce items and we can emit extra items with debug information.
     Items,
     /// Source macro is expected to produce expression so we need to wrap extra items into a block.
     Expression,
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Config {
     pub cache: bool,
     pub split_cache: bool,
@@ -66,14 +82,13 @@ fn function_impl(config: Config, mut item: syn::ItemFn) -> Result<TokenStream> {
         impls,
     };
 
-    let output_dir = PathBuf::from(crate::OUT_DIR)
+    let output_dir = PathBuf::from(path::OUT_DIR)
         .join("generated")
         .join(name.to_string());
     let generated = template::render_crate(&output_dir, &context, config.split_cache)?;
     let dylib = dylib::compile_crate(&generated, BuildProfile::Release)?;
 
     debug!("generated crate: {}", generated.source_dir.display());
-    debug!("dylib path: {}", dylib.dylib_path.display());
 
     let path = proc_macro2::Literal::string(&dylib.dylib_path.display().to_string());
 
@@ -84,20 +99,25 @@ fn function_impl(config: Config, mut item: syn::ItemFn) -> Result<TokenStream> {
     let out = quote! {
         macro_rules! #name {
             ($($args:tt)*) => {
-                #crate_proxy{#path, $($args)*}
+                #crate_proxy{#path $($args)*}
             };
         }
     };
 
     debug!("out: {}", out);
-    debug!("env vars: {}", get_env_vars()?);
+    // debug!("env vars: {}", get_env_vars()?);
     Ok(out)
 }
 
-fn get_env_vars() -> Result<String> {
-    let env_vars = std::env::vars()
-        .map(|(key, value)| format!("{}={}", key, value))
-        .collect::<Vec<_>>()
-        .join("\n");
-    Ok(env_vars)
+pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenStream> {
+    let ProxyInput { dylib_path, tokens } = syn::parse2(input)?;
+    dylib::load_and_run_entry(std::path::Path::new(&dylib_path.value()), tokens)
 }
+
+// fn get_env_vars() -> Result<String> {
+//     let env_vars = std::env::vars()
+//         .map(|(key, value)| format!("{}={}", key, value))
+//         .collect::<Vec<_>>()
+//         .join("\n");
+//     Ok(env_vars)
+// }

@@ -7,17 +7,16 @@ mod errors;
 type Result<T, E = syn::Error> = std::result::Result<T, E>;
 
 mod dylib;
+mod macro_impl;
 mod metadata;
-mod munch;
 mod path;
+mod rustc_meta;
 mod template;
 use errors::MapCompileError;
 
 /// Set to 'true' to enable debug prints.
 #[allow(unexpected_cfgs, reason = "custom made config")]
 pub(crate) const DEBUG: bool = true || cfg!(crabtime_debug);
-
-pub(crate) const OUT_DIR: &str = env!("OUT_DIR");
 
 // ===============================
 // Macros entry points
@@ -28,12 +27,9 @@ pub(crate) const OUT_DIR: &str = env!("OUT_DIR");
 ///
 #[proc_macro]
 pub fn proxy(input: TokenStream) -> TokenStream {
-    let doc = input.to_string();
-    quote::quote! {
-        #[doc=#doc]
-        const FOO: () = ();
-    }
-    .into()
+    macro_impl::proxy_impl(input.into())
+        .map_compile_error()
+        .into()
 }
 
 ///
@@ -61,7 +57,7 @@ pub fn proxy(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn munch(attr: TokenStream, item: TokenStream) -> TokenStream {
-    munch::munch_impl(attr.into(), item.into())
+    macro_impl::munch_impl(attr.into(), item.into())
         .map_compile_error()
         .into()
 }

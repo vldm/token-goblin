@@ -18,6 +18,7 @@ use crate::{
 type TomlTable = toml::map::Map<String, toml::Value>;
 
 // Whether value set, or uses workspace version
+#[derive(Debug)]
 pub enum ValueOrWorkspace {
     Value(toml::Value),
     Workspace { extra: TomlTable },
@@ -43,7 +44,7 @@ pub fn is_workspace(value: &toml::Value) -> bool {
         _ => false,
     }
 }
-
+#[derive(Debug)]
 pub struct Metadata {
     pub dependencies: Vec<Dependency>,
 }
@@ -96,7 +97,7 @@ impl Metadata {
             > 0
     }
 }
-
+#[derive(Debug)]
 pub struct Dependency {
     pub name: String,
     /// Save `Cargo.toml` location in case if `path` version is used.

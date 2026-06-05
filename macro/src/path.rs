@@ -4,6 +4,8 @@ use proc_macro2::Span;
 
 use crate::Result;
 
+pub(crate) const OUT_DIR: &str = env!("OUT_DIR");
+
 /// Use `CARGO_MANIFEST_DIR` to get path to crate root.
 /// It might be unset if custom build system is used.
 pub fn crate_root() -> Result<PathBuf> {
@@ -25,7 +27,7 @@ pub fn build_dir(project_dir: &Path, per_project_cache: bool) -> PathBuf {
     if per_project_cache {
         return project_dir.join("build_cache");
     }
-    PathBuf::from(crate::OUT_DIR).join("build_cache")
+    PathBuf::from(OUT_DIR).join("build_cache")
 }
 
 /// Use `CARGO_MANIFEST_PATH` to get path to Cargo.toml:

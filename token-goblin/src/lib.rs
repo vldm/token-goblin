@@ -7,4 +7,5 @@ fn foo(v: TokenStream) -> TokenStream {
     v
 }
 
-foo!();
+const X: usize = foo!(12);
+const _ASSERT: () = assert!(X == 12);

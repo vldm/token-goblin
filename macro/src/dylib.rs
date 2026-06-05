@@ -4,12 +4,14 @@
 //! macro phases. Template materialization is handled elsewhere; callers pass in
 //! paths to an already-generated crate tree.
 
+use std::ffi::CStr;
+use std::os::raw::c_char;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use proc_macro2::{Span, TokenStream};
 
-use crate::{Result, path};
+use crate::{Result, path, rustc_meta};
 
 /// Cargo build profile for the generated dylib crate.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -129,13 +131,14 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
         .arg(&manifest_path)
         .arg("--target-dir")
         .arg(generated.target_dir())
-        .env("CARGO_BUILD_BUILD_DIR", &generated.build_dir);
+        .env("CARGO_BUILD_BUILD_DIR", &generated.build_dir)
+        .env("RUSTC", env!("TOKEN_GOBLIN_RUSTC"));
     if let Some(flag) = profile.cargo_release_flag() {
         cmd.arg(flag);
     }
 
     debug!(
-        "dylib: compiling {} (profile={:?})",
+        "compiling {} (profile={:?})",
         manifest_path.display(),
         profile
     );
@@ -168,7 +171,7 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
         ));
     }
 
-    debug!("dylib: built {}", dylib_path.display());
+    debug!("built {}", dylib_path.display());
 
     Ok(DylibBuild {
         dylib_path,
@@ -178,9 +181,43 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
 }
 
 type EntryFn = fn(TokenStream) -> TokenStream;
+type RustcVersionFn = unsafe extern "C" fn() -> *const c_char;
+
+fn read_dylib_rustc_meta(library: &libloading::Library, dylib_path: &Path) -> Result<&'static str> {
+    // Safety: we know the type of rustc_version function.
+    let rustc_version: libloading::Symbol<RustcVersionFn> =
+        unsafe { library.get(b"rustc_version") }.map_err(|e| {
+            error!(
+                Span::call_site() =>
+                "failed to resolve `rustc_version` symbol in {}: {e}",
+                dylib_path.display()
+            )
+        })?;
+
+    // Safety: return pointer to static string on stable C ABI.
+    let ptr = unsafe { rustc_version() };
+    if ptr.is_null() {
+        return Err(error!(
+            Span::call_site() =>
+            "`rustc_version` returned null in {}",
+            dylib_path.display()
+        ));
+    }
+
+    // Safety: we know that the pointer is a valid null-terminated C string.
+    let meta: &'static CStr = unsafe { CStr::from_ptr(ptr) };
+    meta.to_str().map_err(|e| {
+        error!(
+            Span::call_site() =>
+            "`rustc_version` returned invalid UTF-8 in {}: {e}",
+            dylib_path.display()
+        )
+    })
+}
 
 /// Load a dylib, invoke `entry`, and return the resulting token stream.
 pub fn load_and_run_entry(dylib_path: &Path, input: TokenStream) -> Result<TokenStream> {
+    debug!("loading: {}", dylib_path.display());
     // Safety: our library is fresh build and should not contain any "_start"\"OnLoad" methods
     let library = unsafe { libloading::Library::new(dylib_path) }.map_err(|e| {
         error!(
@@ -190,9 +227,25 @@ pub fn load_and_run_entry(dylib_path: &Path, input: TokenStream) -> Result<Token
         )
     })?;
 
+    let lib_meta = read_dylib_rustc_meta(&library, dylib_path)?;
+    rustc_meta::ensure_compatible(lib_meta)?;
+    debug!("calling entry with input: {}", input);
+
     /// Safety: we know the type of entrypoint.
     let entry: libloading::Symbol<EntryFn> = unsafe { library.get(b"entry") }
         .map_err(|e| error!(Span::call_site() => "failed to resolve `entry` symbol: {e}"))?;
 
-    Ok(entry(input))
+    let res = entry(input);
+    debug!("result: {}", res);
+
+    Ok(res)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn runner_rustc_path_is_embedded() {
+        let path = env!("TOKEN_GOBLIN_RUSTC");
+        assert!(!path.is_empty());
+    }
 }

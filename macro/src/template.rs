@@ -13,6 +13,7 @@ use crate::{
 
 const MARKER: &str = "goblin-stencil:";
 /// Values substituted into template marker lines.
+#[derive(Debug)]
 pub struct TemplateContext {
     pub package_name: String,
     pub package_extra: String,
@@ -32,6 +33,8 @@ pub fn render_crate(
     context: &TemplateContext,
     per_project_cache: bool,
 ) -> Result<GeneratedCrate> {
+    debug!("rendering crate into {}", output_dir.display());
+    debug!("context: {:?}", context);
     let template_dir = template_root();
     render_template_tree(&template_dir, output_dir, context)?;
 
