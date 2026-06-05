@@ -12,14 +12,25 @@ use crate::{
 
 pub struct ProxyInput {
     pub dylib_path: syn::LitStr,
+    pub source_hash: syn::LitStr,
     pub tokens: proc_macro2::TokenStream,
 }
 
 impl syn::parse::Parse for ProxyInput {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let dylib_path = input.parse()?;
+        input.parse::<syn::Token![,]>()?;
+        let source_hash = input.parse()?;
+        let tokens = if input.is_empty() {
+            proc_macro2::TokenStream::new()
+        } else {
+            input.parse::<syn::Token![,]>()?;
+            input.parse()?
+        };
         Ok(Self {
-            dylib_path: input.parse()?,
-            tokens: input.parse()?,
+            dylib_path,
+            source_hash,
+            tokens,
         })
     }
 }
@@ -40,6 +51,7 @@ pub struct Config {
 }
 impl Config {
     fn from_attrs(args: TokenStream) -> Result<Self> {
+        debug!("args: {}", args);
         let config = Config::default();
         Ok(config)
     }
@@ -91,6 +103,7 @@ fn function_impl(config: Config, mut item: syn::ItemFn) -> Result<TokenStream> {
     debug!("generated crate: {}", generated.source_dir.display());
 
     let path = proc_macro2::Literal::string(&dylib.dylib_path.display().to_string());
+    let source_hash = proc_macro2::Literal::string(&generated.source_hash);
 
     // Using mixed site to resolve `$crate`.
     let crate_proxy = quote_spanned! { Span::mixed_site() =>
@@ -99,7 +112,7 @@ fn function_impl(config: Config, mut item: syn::ItemFn) -> Result<TokenStream> {
     let out = quote! {
         macro_rules! #name {
             ($($args:tt)*) => {
-                #crate_proxy{#path $($args)*}
+                #crate_proxy{#path, #source_hash, $($args)*}
             };
         }
     };
@@ -110,8 +123,16 @@ fn function_impl(config: Config, mut item: syn::ItemFn) -> Result<TokenStream> {
 }
 
 pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenStream> {
-    let ProxyInput { dylib_path, tokens } = syn::parse2(input)?;
-    dylib::load_and_run_entry(std::path::Path::new(&dylib_path.value()), tokens)
+    let ProxyInput {
+        dylib_path,
+        source_hash,
+        tokens,
+    } = syn::parse2(input)?;
+    dylib::load_and_run_entry(
+        std::path::Path::new(&dylib_path.value()),
+        &source_hash.value(),
+        tokens,
+    )
 }
 
 // fn get_env_vars() -> Result<String> {

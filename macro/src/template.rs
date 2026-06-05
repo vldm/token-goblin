@@ -27,6 +27,24 @@ pub fn template_root() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/template"))
 }
 
+/// Stable hash of all template inputs that affect generated crate contents.
+/// Used to ensure that our macro declaration and caller code expect to call the same macro.
+pub fn source_hash(context: &TemplateContext) -> Result<String> {
+    let dependencies = render_dependencies(&context.source_metadata)?;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"package_name\0");
+    hasher.update(context.package_name.as_bytes());
+    hasher.update(b"\0package_extra\0");
+    hasher.update(context.package_extra.as_bytes());
+    hasher.update(b"\0dependencies\0");
+    hasher.update(dependencies.as_bytes());
+    hasher.update(b"\0entry\0");
+    hasher.update(context.entry.as_bytes());
+    hasher.update(b"\0impls\0");
+    hasher.update(context.impls.as_bytes());
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
 /// Render the dylib crate template into `output_dir`.
 pub fn render_crate(
     output_dir: &Path,
@@ -35,6 +53,7 @@ pub fn render_crate(
 ) -> Result<GeneratedCrate> {
     debug!("rendering crate into {}", output_dir.display());
     debug!("context: {:?}", context);
+    let source_hash = source_hash(context)?;
     let template_dir = template_root();
     render_template_tree(&template_dir, output_dir, context)?;
 
@@ -42,6 +61,7 @@ pub fn render_crate(
         output_dir.to_path_buf(),
         per_project_cache,
         context.package_name.clone(),
+        source_hash,
     ))
 }
 

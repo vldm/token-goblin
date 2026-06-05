@@ -3,6 +3,9 @@ use std::process::Command;
 
 fn main() {
     let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
+    let source_hash =
+        std::env::var("TOKEN_GOBLIN_SOURCE_HASH").expect("TOKEN_GOBLIN_SOURCE_HASH is not set");
+
     let output = Command::new(&rustc)
         .arg("-vV")
         .output()
@@ -14,17 +17,18 @@ fn main() {
     );
 
     let mut bytes = output.stdout;
+    bytes.extend_from_slice(format!("source-hash: {source_hash}\n").as_bytes());
     bytes.push(b'\0');
 
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR is not set");
-    let path = Path::new(&out_dir).join("rustc_meta.rs");
+    let path = Path::new(&out_dir).join("meta.rs");
     let escaped = escape_for_rust_byte_str(&bytes);
 
     std::fs::write(
         &path,
-        format!("pub static RUSTC_META: &[u8] = b\"{escaped}\";"),
+        format!("pub static META: &[u8] = b\"{escaped}\";"),
     )
-    .expect("failed to write generated rustc metadata");
+    .expect("failed to write generated metadata");
 }
 
 fn escape_for_rust_byte_str(bytes: &[u8]) -> String {

@@ -42,15 +42,20 @@ impl BuildProfile {
 //     pub input: TokenStream,
 // }
 
-/// Paths describing a generated crate ready to be compiled.
+/// Collected information about generated crate, that is ready to be compiled.
 #[derive(Clone, Debug)]
 pub struct GeneratedCrate {
-    /// Root directory of the generated crate (contains `Cargo.toml`).
+    /// Root directory of the generated crate
+    /// Used to calculate `build-dir`, `target-dir`, and provide path to `Cargo.toml`.
     pub source_dir: PathBuf,
     /// Build cache directory for generated crate artifacts.
+    /// Can be shared between multiple macros, or used for per-project cache.
     pub build_dir: PathBuf,
     /// Package name from the generated `Cargo.toml` `[package].name`.
+    /// Used to calculate `dylib_path`.
     pub crate_name: String,
+    /// Stable hash of template inputs used to build this crate.
+    pub source_hash: String,
 }
 
 impl GeneratedCrate {
@@ -58,12 +63,14 @@ impl GeneratedCrate {
         source_dir: PathBuf,
         per_project_cache: bool,
         crate_name: impl Into<String>,
+        source_hash: impl Into<String>,
     ) -> Self {
         let build_dir = path::build_dir(&source_dir, per_project_cache);
         Self {
             source_dir,
             build_dir,
             crate_name: crate_name.into(),
+            source_hash: source_hash.into(),
         }
     }
 
@@ -132,7 +139,8 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
         .arg("--target-dir")
         .arg(generated.target_dir())
         .env("CARGO_BUILD_BUILD_DIR", &generated.build_dir)
-        .env("RUSTC", env!("TOKEN_GOBLIN_RUSTC"));
+        .env("RUSTC", env!("TOKEN_GOBLIN_RUSTC"))
+        .env("TOKEN_GOBLIN_SOURCE_HASH", &generated.source_hash);
     if let Some(flag) = profile.cargo_release_flag() {
         cmd.arg(flag);
     }
@@ -181,25 +189,24 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
 }
 
 type EntryFn = fn(TokenStream) -> TokenStream;
-type RustcVersionFn = unsafe extern "C" fn() -> *const c_char;
+type MetaFn = unsafe extern "C" fn() -> *const c_char;
 
-fn read_dylib_rustc_meta(library: &libloading::Library, dylib_path: &Path) -> Result<&'static str> {
-    // Safety: we know the type of rustc_version function.
-    let rustc_version: libloading::Symbol<RustcVersionFn> =
-        unsafe { library.get(b"rustc_version") }.map_err(|e| {
-            error!(
-                Span::call_site() =>
-                "failed to resolve `rustc_version` symbol in {}: {e}",
-                dylib_path.display()
-            )
-        })?;
+fn read_dylib_meta(library: &libloading::Library, dylib_path: &Path) -> Result<&'static str> {
+    // Safety: we know the type of meta function.
+    let meta_fn: libloading::Symbol<MetaFn> = unsafe { library.get(b"meta") }.map_err(|e| {
+        error!(
+            Span::call_site() =>
+            "failed to resolve `meta` symbol in {}: {e}",
+            dylib_path.display()
+        )
+    })?;
 
     // Safety: return pointer to static string on stable C ABI.
-    let ptr = unsafe { rustc_version() };
+    let ptr = unsafe { meta_fn() };
     if ptr.is_null() {
         return Err(error!(
             Span::call_site() =>
-            "`rustc_version` returned null in {}",
+            "`meta` returned null in {}",
             dylib_path.display()
         ));
     }
@@ -209,14 +216,18 @@ fn read_dylib_rustc_meta(library: &libloading::Library, dylib_path: &Path) -> Re
     meta.to_str().map_err(|e| {
         error!(
             Span::call_site() =>
-            "`rustc_version` returned invalid UTF-8 in {}: {e}",
+            "`meta` returned invalid UTF-8 in {}: {e}",
             dylib_path.display()
         )
     })
 }
 
 /// Load a dylib, invoke `entry`, and return the resulting token stream.
-pub fn load_and_run_entry(dylib_path: &Path, input: TokenStream) -> Result<TokenStream> {
+pub fn load_and_run_entry(
+    dylib_path: &Path,
+    source_hash: &str,
+    input: TokenStream,
+) -> Result<TokenStream> {
     debug!("loading: {}", dylib_path.display());
     // Safety: our library is fresh build and should not contain any "_start"\"OnLoad" methods
     let library = unsafe { libloading::Library::new(dylib_path) }.map_err(|e| {
@@ -227,8 +238,8 @@ pub fn load_and_run_entry(dylib_path: &Path, input: TokenStream) -> Result<Token
         )
     })?;
 
-    let lib_meta = read_dylib_rustc_meta(&library, dylib_path)?;
-    rustc_meta::ensure_compatible(lib_meta)?;
+    let lib_meta = read_dylib_meta(&library, dylib_path)?;
+    rustc_meta::ensure_compatible(lib_meta, source_hash)?;
     debug!("calling entry with input: {}", input);
 
     /// Safety: we know the type of entrypoint.
