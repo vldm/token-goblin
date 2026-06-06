@@ -1,4 +1,5 @@
 // Prelude
+#[allow(unused)]
 use token_goblin_runtime::*;
 
 mod generated_meta {

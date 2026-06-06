@@ -42,8 +42,9 @@ pub fn proxy(input: TokenStream) -> TokenStream {
 /// or for function:
 /// ```
 /// #[token_goblin::munch]
-/// fn my_function() {
+/// fn my_function(_: TokenStream) -> TokenStream {
 ///   //..
+///  # todo!()
 /// }
 /// ```
 /// `munch` macro will expand to one or more macro definitions:

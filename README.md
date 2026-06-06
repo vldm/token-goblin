@@ -30,3 +30,14 @@ output: `TokenStream`, `String`, print directly to stdout.
 
 ### inline-proc
 - No simple one function macro. 
+
+## Testing
+
+Most of tests are implemented as regular integration tests, or doctests dirrectly in macro library.
+Fixtures represents tests that need to be run with different environment (currently only toolchain, or cargo config).
+
+Fixtures can be run with:
+```bash
+cargo test -p token-goblin --test fixtures
+```
+
