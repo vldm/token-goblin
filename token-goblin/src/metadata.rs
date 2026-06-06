@@ -12,7 +12,6 @@ use proc_macro2::Span;
 
 use crate::{
     Result,
-    errors::AnyError,
     path::{manifest_path, search_for_parent_manifest},
 };
 type TomlTable = toml::map::Map<String, toml::Value>;

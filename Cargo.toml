@@ -1,3 +1,4 @@
 [workspace]
-members = ["token-goblin", "macro", "runtime"]
+members = ["token-goblin", "runtime"]
+exclude = ["test-matrix/*"]
 resolver = "3"

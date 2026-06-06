@@ -1,4 +1,4 @@
-use std::path::{Display, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use proc_macro2::Span;
 

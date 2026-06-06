@@ -1,24 +1,67 @@
-//! Main `token-goblin` crate. Re-exports will live here later.
+#![allow(unused)]
+use proc_macro::TokenStream;
+#[macro_use]
+mod errors;
 
-use std::num::Saturating;
+type Result<T, E = syn::Error> = std::result::Result<T, E>;
 
-pub use token_goblin_macro::munch;
+mod dylib;
+mod macro_impl;
+mod metadata;
+mod path;
+mod rustc_meta;
+mod template;
+use errors::MapCompileError;
 
-// #[munch(split_cache = true)]
-// fn foo(v: TokenStream) -> TokenStream {
-//     v
-// }
+/// Set to 'true' to enable debug prints.
+#[allow(unexpected_cfgs, reason = "custom made config")]
+pub(crate) const DEBUG: bool = true || cfg!(token_goblin_debug);
 
-// #[munch(split_cache = true)]
-// macro! bar() {}
+// ===============================
+// Macros entry points
+// ===============================
 
-// const X: usize = foo!(12);
-// const _ASSERT: () = assert!(X == 12);
+///
+/// This is an internal macro, used to proxy macro expansion calls to the real code in dylib.
+///
+#[proc_macro]
+pub fn proxy(input: TokenStream) -> TokenStream {
+    macro_impl::proxy_impl(input.into())
+        .map_compile_error()
+        .into()
+}
 
-type MyType<T = u32> = Saturating<T>;
-const my_type: fn(u32) -> MyType = Saturating;
+///
+///  Munch your declaration and produce a new macro.
+/// ```
+/// #[token_goblin::munch]
+/// mod my_module {
+///   // entry fn
+/// }
+/// ```
+/// or for function:
+/// ```
+/// #[token_goblin::munch]
+/// fn my_function() {
+///   //..
+/// }
+/// ```
+/// `munch` macro will expand to one or more macro definitions:
+/// ```
+/// macro_rules! my_function {
+///   ($($args:tt)*) => {
+///     //..
+///   };
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn munch(attr: TokenStream, item: TokenStream) -> TokenStream {
+    macro_impl::munch_impl(attr.into(), item.into())
+        .map_compile_error()
+        .into()
+}
 
-fn foo() {
-    let x = my_type(10);
-    println!("x: {}", x);
+#[proc_macro_derive(Snif)]
+pub fn snif(input: TokenStream) -> TokenStream {
+    input
 }
