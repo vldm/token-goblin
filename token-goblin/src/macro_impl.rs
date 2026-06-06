@@ -2,6 +2,7 @@ use std::{path::PathBuf, str::FromStr};
 
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote, quote_spanned};
+use syn::{Token, spanned::Spanned};
 
 use crate::{
     Result,
@@ -10,30 +11,56 @@ use crate::{
     template::{self, TemplateContext},
 };
 
-pub struct ProxyInput {
+pub struct ProxyArgs {
     pub dylib_path: syn::LitStr,
     pub source_hash: syn::LitStr,
+}
+impl syn::parse::Parse for ProxyArgs {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let content;
+        syn::braced!(content in input);
+
+        let dylib_path = content.parse()?;
+        content.parse::<syn::Token![,]>()?;
+        let source_hash = content.parse()?;
+        Ok(Self {
+            dylib_path,
+            source_hash,
+        })
+    }
+}
+impl ToTokens for ProxyArgs {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let brace = syn::token::Brace::default();
+        brace.surround(tokens, |tokens| {
+            let comma = syn::token::Comma::default();
+
+            tokens.extend(self.dylib_path.to_token_stream());
+            tokens.extend(comma.into_token_stream());
+            tokens.extend(self.source_hash.to_token_stream());
+        });
+    }
+}
+
+pub struct ProxyInput {
+    pub proxy_args: ProxyArgs,
     pub tokens: proc_macro2::TokenStream,
 }
 
 impl syn::parse::Parse for ProxyInput {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let dylib_path = input.parse()?;
-        input.parse::<syn::Token![,]>()?;
-        let source_hash = input.parse()?;
+        let proxy_args = input.parse()?;
+
         let tokens = if input.is_empty() {
             proc_macro2::TokenStream::new()
         } else {
             input.parse::<syn::Token![,]>()?;
             input.parse()?
         };
-        Ok(Self {
-            dylib_path,
-            source_hash,
-            tokens,
-        })
+        Ok(Self { proxy_args, tokens })
     }
 }
+
 /// How to emit debug information during macro expansion.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DebugMode {
@@ -106,19 +133,19 @@ impl syn::parse::Parse for Config {
 fn lit_to_bool(lit: syn::Lit) -> Result<bool> {
     match lit {
         syn::Lit::Bool(lit) => Ok(lit.value()),
-        _ => Err(error!(Span::call_site() => "Expected boolean value")),
+        _ => Err(error!(lit.span() => "Expected boolean value")),
     }
 }
 fn lit_to_string(lit: syn::Lit) -> Result<String> {
     match lit {
         syn::Lit::Str(lit) => Ok(lit.value()),
-        _ => Err(error!(Span::call_site() => "Expected string value")),
+        _ => Err(error!(lit.span() => "Expected string value")),
     }
 }
 
 impl Config {
     fn from_attrs(args: TokenStream) -> Result<Self> {
-        debug!("args: {}", args);
+        debug!("config args: {}", args);
         syn::parse2(args)
     }
 }
@@ -139,46 +166,110 @@ pub fn munch_impl(args: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let config = Config::from_attrs(args)?;
     match item {
         syn::Item::Fn(item) => function_impl(config, item),
+        syn::Item::Mod(item) => module_impl(config, item),
+        // In case we need to support `macro foo {}` items
         // syn::Item::Verbatim(item) => macro_impl(config, item),
-        v => Err(error!(Span::call_site() => "Expected function or macro" )),
+        // for macro_rules! syntax (both looks useless, since it's always easier
+        // to implement custom `macro_rules!` )
+        // syn::Item::Macro(item) => macro_impl(config, item),
+        v => Err(error!(v.span() => "Expected function or module" )),
     }
 }
 
-// fn macro_impl(config: Config, mut item: TokenStream) -> Result<TokenStream> {
-//     let source_hash = syn::LitStr::new("x", Span::call_site());
-//     let path = syn::LitStr::new("y", Span::call_site());
-//     let name = syn::Ident::new("z", Span::call_site());
+fn module_impl(config: Config, item: syn::ItemMod) -> Result<TokenStream> {
+    let name = item.ident.clone();
+    let context = TemplateContext::from_mod(item)?;
+    build_and_compile_crate(&name, &context, config)
+}
 
-//     let crate_proxy = quote_spanned! { Span::mixed_site() =>
-//         $crate::proxy!
-//     };
-//     let out = quote! {
-//         macro_rules! #name {
-//             ($($args:tt)*) => {
-//                 #crate_proxy{#path, #source_hash, $($args)*}
-//             };
-//         }g
-//     };
-//     Ok(out)
-// }
+fn function_impl(config: Config, item: syn::ItemFn) -> Result<TokenStream> {
+    debug!(
+        "function attrs: {:?}",
+        item.attrs
+            .iter()
+            .map(|attr| format!("{}", attr.to_token_stream()))
+            .collect::<Vec<_>>()
+    );
+    let name = item.sig.ident.clone();
 
-fn function_impl(config: Config, mut item: syn::ItemFn) -> Result<TokenStream> {
-    let name = &item.sig.ident;
-    let package_name = format!("token-goblin-{}", name.to_string().replace('_', "-"));
+    let context = TemplateContext::from_fn(item)?;
+    build_and_compile_crate(&name, &context, config)
+}
 
-    let source_metadata = metadata::load_dependencies()?;
+pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenStream> {
+    let input: ProxyInput = syn::parse2(input)?;
 
-    item.vis = syn::Visibility::Public(syn::token::Pub::default());
-    let impls = quote! { #item }.to_string();
-    let entry = format!("impls::{name}(input)");
+    dylib::load_and_run_entry(
+        std::path::Path::new(&input.proxy_args.dylib_path.value()),
+        &input.proxy_args.source_hash.value(),
+        input.tokens,
+    )
+}
 
-    let context = TemplateContext {
-        package_name: package_name.clone(),
-        package_extra: String::new(),
-        source_metadata,
-        entry,
-        impls,
-    };
+impl TemplateContext {
+    fn from_fn(mut item: syn::ItemFn) -> Result<Self> {
+        let name = &item.sig.ident;
+        let package_name = format!("token-goblin-{}", name.to_string().replace('_', "-"));
+
+        item.vis = syn::Visibility::Public(syn::token::Pub::default());
+
+        let context = TemplateContext {
+            package_name: package_name.clone(),
+            package_extra: String::new(),
+            source_metadata: metadata::load_dependencies()?,
+            entry: format!("impls::{name}(input)"),
+            impls: quote! { #item }.to_string(),
+        };
+
+        Ok(context)
+    }
+
+    fn from_mod(mut item: syn::ItemMod) -> Result<Self> {
+        let name = &item.ident;
+        let package_name = format!("token-goblin-{}", name.to_string().replace('_', "-"));
+
+        /// rebuild all sub items to public
+        let Some((b, mut content)) = item.content else {
+            return Err(error!(item.span() => "Expected module content"));
+        };
+
+        let mut entries = Vec::new();
+
+        for item in &mut content {
+            match item {
+                syn::Item::Fn(item) => {
+                    item.vis = syn::Visibility::Public(syn::token::Pub::default());
+                    entries.push(quote! { #item });
+                }
+                _ => {
+                    return Err(error!(item.span() => "Expected function"));
+                }
+            }
+        }
+
+        if entries.is_empty() {
+            return Err(error!(b.span.join() => "Expected at least one function"));
+        }
+
+        todo!("Convert items to match impls block");
+
+        Ok(TemplateContext {
+            package_name: package_name.clone(),
+            package_extra: String::new(),
+            source_metadata: metadata::load_dependencies()?,
+            entry: format!("impls::{name}(input)"),
+            impls: quote! { #(#content)* }.to_string(),
+        })
+    }
+}
+
+/// Build crate from template, and compile it to dylib.
+/// Use name to calculate output path, and include source hash if needed.
+fn build_and_compile_crate(
+    name: &syn::Ident,
+    template_context: &TemplateContext,
+    config: Config,
+) -> Result<TokenStream> {
     let (output_dir, stable) = path::calculate_generated_path(name);
 
     debug!("path_is_stable: {}, config.cache: {}", stable, config.cache);
@@ -189,7 +280,7 @@ fn function_impl(config: Config, mut item: syn::ItemFn) -> Result<TokenStream> {
 
     let generated = template::render_crate(
         &output_dir,
-        &context,
+        template_context,
         config.split_cache,
         include_source_hash,
     )?;
@@ -197,8 +288,10 @@ fn function_impl(config: Config, mut item: syn::ItemFn) -> Result<TokenStream> {
 
     debug!("generated crate: {}", generated.source_dir.display());
 
-    let path = proc_macro2::Literal::string(&dylib.dylib_path.display().to_string());
-    let source_hash = proc_macro2::Literal::string(&generated.source_hash);
+    let proxy_input = ProxyArgs {
+        dylib_path: syn::LitStr::new(&dylib.dylib_path.display().to_string(), Span::call_site()),
+        source_hash: syn::LitStr::new(&generated.source_hash, Span::call_site()),
+    };
 
     // Using mixed site to resolve `$crate`.
     let crate_proxy = quote_spanned! { Span::mixed_site() =>
@@ -207,7 +300,7 @@ fn function_impl(config: Config, mut item: syn::ItemFn) -> Result<TokenStream> {
     let out = quote! {
         macro_rules! #name {
             ($($args:tt)*) => {
-                #crate_proxy{#path, #source_hash, $($args)*}
+                #crate_proxy{#proxy_input, $($args)*}
             };
         }
     };
@@ -215,19 +308,6 @@ fn function_impl(config: Config, mut item: syn::ItemFn) -> Result<TokenStream> {
     debug!("out: {}", out);
     // debug!("env vars: {}", get_env_vars()?);
     Ok(out)
-}
-
-pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenStream> {
-    let ProxyInput {
-        dylib_path,
-        source_hash,
-        tokens,
-    } = syn::parse2(input)?;
-    dylib::load_and_run_entry(
-        std::path::Path::new(&dylib_path.value()),
-        &source_hash.value(),
-        tokens,
-    )
 }
 
 // fn get_env_vars() -> Result<String> {

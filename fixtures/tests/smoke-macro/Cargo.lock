@@ -156,13 +156,6 @@ dependencies = [
 name = "token-goblin"
 version = "0.1.0"
 dependencies = [
- "token-goblin-macro",
-]
-
-[[package]]
-name = "token-goblin-macro"
-version = "0.1.0"
-dependencies = [
  "blake3",
  "libloading",
  "proc-macro2",

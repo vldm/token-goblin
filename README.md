@@ -20,13 +20,15 @@ output: `TokenStream`, `String`, print directly to stdout.
 5. Should use cargo build-cache and can work with `cache-proc-macros`.
 6. macro declaration should generate `rust-analyzer` shim for better type information.
 7. Support workspace dependencies.
+8. Support IDE
+9. map cargo errors to span information.
 
 
 ## Compare with other solutions
 
 ### crabtime
 - Recompile each macro on call site
-- Need 
+- Don't work with build-dir cache 
 
 ### inline-proc
 - No simple one function macro. 
