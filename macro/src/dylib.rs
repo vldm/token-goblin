@@ -65,24 +65,26 @@ pub struct GeneratedCrate {
     /// Package name from the generated `Cargo.toml` `[package].name`.
     /// Used to calculate `dylib_path`.
     pub crate_name: String,
-    /// Stable hash of template inputs used to build this crate.
+    /// Stable hash of template inputs used to build this crate,
+    /// encoded in hex without `0x` prefix.
     pub source_hash: String,
-
 }
 
 impl GeneratedCrate {
     pub fn new(
-        source_dir: PathBuf,
+        mut source_dir: PathBuf,
         per_project_cache: bool,
         crate_name: impl Into<String>,
         source_hash: impl Into<String>,
     ) -> Self {
+        let source_hash = source_hash.into();
+
         let build_dir = path::build_dir(&source_dir, per_project_cache);
         Self {
             source_dir,
             build_dir,
             crate_name: crate_name.into(),
-            source_hash: source_hash.into(),
+            source_hash,
         }
     }
 

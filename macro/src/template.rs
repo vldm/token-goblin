@@ -50,15 +50,21 @@ pub fn render_crate(
     output_dir: &Path,
     context: &TemplateContext,
     per_project_cache: bool,
+    include_source_hash: bool,
 ) -> Result<GeneratedCrate> {
+    let source_hash = source_hash(context)?;
+
+    let mut output_dir = output_dir.to_path_buf();
+    if include_source_hash {
+        output_dir.push(&source_hash);
+    }
     debug!("rendering crate into {}", output_dir.display());
     debug!("context: {:?}", context);
-    let source_hash = source_hash(context)?;
     let template_dir = template_root();
-    render_template_tree(&template_dir, output_dir, context)?;
+    render_template_tree(&template_dir, &output_dir, context)?;
 
     Ok(GeneratedCrate::new(
-        output_dir.to_path_buf(),
+        output_dir,
         per_project_cache,
         context.package_name.clone(),
         source_hash,

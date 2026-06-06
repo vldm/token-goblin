@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::{Display, Path, PathBuf};
 
 use proc_macro2::Span;
 
@@ -63,4 +63,44 @@ pub fn search_for_parent_manifest<U>(
     }
 
     Err(error!(Span::call_site() => "No parent directory found"))
+}
+
+/// Use source span to request path of macro definition.
+///
+/// Returns:
+/// - Path to generated crate
+/// - Whether this path is local (not remapped, generated, etc)
+///
+/// Format of path is:
+/// `{OUT_DIR}/generated/{crate_name}_{crate_version}/{path_to_macro_definition}_{fn_name}_{line}_{column}`
+pub fn calculate_generated_path(ident: &syn::Ident) -> (PathBuf, bool) {
+    let fn_name = ident.to_string();
+    let span: proc_macro::Span = ident.span().unwrap();
+
+    let mut stable = true;
+    let file = span.local_file().map_or_else(
+        || {
+            stable = false;
+            span.file()
+        },
+        |v| v.display().to_string(),
+    );
+
+    let crate_name = std::env::var("CARGO_PKG_NAME").unwrap_or_else(|_| {
+        stable = false;
+        "unknown".to_string()
+    });
+    let crate_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| {
+        stable = false;
+        "unknown".to_string()
+    });
+    let file = sanitize_path(&file);
+    let line = span.line();
+    let column = span.column();
+    let path = format!("{OUT_DIR}/generated/{crate_name}_{crate_version}/{file}_{line}_{column}");
+    (PathBuf::from(path), stable)
+}
+
+fn sanitize_path(path: &str) -> String {
+    path.replace(['\\', '/'], "_")
 }

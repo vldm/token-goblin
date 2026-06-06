@@ -16,7 +16,7 @@ use errors::MapCompileError;
 
 /// Set to 'true' to enable debug prints.
 #[allow(unexpected_cfgs, reason = "custom made config")]
-pub(crate) const DEBUG: bool = true || cfg!(crabtime_debug);
+pub(crate) const DEBUG: bool = true || cfg!(token_goblin_debug);
 
 // ===============================
 // Macros entry points

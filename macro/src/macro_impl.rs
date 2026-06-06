@@ -1,7 +1,7 @@
 use std::{path::PathBuf, str::FromStr};
 
 use proc_macro2::{Span, TokenStream};
-use quote::{quote, quote_spanned};
+use quote::{ToTokens, quote, quote_spanned};
 
 use crate::{
     Result,
@@ -55,8 +55,14 @@ impl FromStr for DebugMode {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Config {
+    // If set to false, we add source-hash to output path
+    // This enforces recompilation of the macro for each change in the source code.
+    pub cache: bool,
+    // whether we need to use per crate `build-dir`
     pub split_cache: bool,
+    // Cargo build profile
     pub profile: BuildProfile,
+    // How to emit debug information during macro expansion.
     pub debug: Option<DebugMode>,
 }
 
@@ -76,6 +82,7 @@ impl syn::parse::Parse for Config {
             };
 
             match key.to_string().as_str() {
+                "cache" => config.cache = lit_to_bool(value)?,
                 "split_cache" => config.split_cache = lit_to_bool(value)?,
                 "profile" => {
                     config.profile =
@@ -119,6 +126,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            cache: true,
             split_cache: false,
             profile: BuildProfile::Release,
             debug: None,
@@ -131,9 +139,28 @@ pub fn munch_impl(args: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let config = Config::from_attrs(args)?;
     match item {
         syn::Item::Fn(item) => function_impl(config, item),
-        _ => Err(error!(Span::call_site() => "Expected function")),
+        // syn::Item::Verbatim(item) => macro_impl(config, item),
+        v => Err(error!(Span::call_site() => "Expected function or macro" )),
     }
 }
+
+// fn macro_impl(config: Config, mut item: TokenStream) -> Result<TokenStream> {
+//     let source_hash = syn::LitStr::new("x", Span::call_site());
+//     let path = syn::LitStr::new("y", Span::call_site());
+//     let name = syn::Ident::new("z", Span::call_site());
+
+//     let crate_proxy = quote_spanned! { Span::mixed_site() =>
+//         $crate::proxy!
+//     };
+//     let out = quote! {
+//         macro_rules! #name {
+//             ($($args:tt)*) => {
+//                 #crate_proxy{#path, #source_hash, $($args)*}
+//             };
+//         }g
+//     };
+//     Ok(out)
+// }
 
 fn function_impl(config: Config, mut item: syn::ItemFn) -> Result<TokenStream> {
     let name = &item.sig.ident;
@@ -152,11 +179,20 @@ fn function_impl(config: Config, mut item: syn::ItemFn) -> Result<TokenStream> {
         entry,
         impls,
     };
+    let (output_dir, stable) = path::calculate_generated_path(name);
 
-    let output_dir = PathBuf::from(path::OUT_DIR)
-        .join("generated")
-        .join(name.to_string());
-    let generated = template::render_crate(&output_dir, &context, config.split_cache)?;
+    debug!("path_is_stable: {}, config.cache: {}", stable, config.cache);
+
+    // If user enforces no-cache, or we cannot find macro declaration path
+    // we need to include the source hash
+    let include_source_hash = !(config.cache && stable);
+
+    let generated = template::render_crate(
+        &output_dir,
+        &context,
+        config.split_cache,
+        include_source_hash,
+    )?;
     let dylib = dylib::compile_crate(&generated, config.profile)?;
 
     debug!("generated crate: {}", generated.source_dir.display());
