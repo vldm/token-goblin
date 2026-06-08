@@ -5,6 +5,16 @@ mod errors;
 
 type Result<T, E = syn::Error> = std::result::Result<T, E>;
 
+macro_rules! timed {
+    ($name: literal, $block: block) => {{
+        let start = std::time::Instant::now();
+        let result = $block;
+        let duration = start.elapsed();
+        debug!("{} duration: {:?}", $name, duration);
+        result
+    }};
+}
+
 mod dylib;
 mod macro_impl;
 mod metadata;

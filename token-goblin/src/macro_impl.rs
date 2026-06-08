@@ -162,18 +162,20 @@ impl Default for Config {
 }
 
 pub fn munch_impl(args: TokenStream, item: TokenStream) -> Result<TokenStream> {
-    let item = syn::parse2::<syn::Item>(item)?;
-    let config = Config::from_attrs(args)?;
-    match item {
-        syn::Item::Fn(item) => function_impl(config, item),
-        syn::Item::Mod(item) => module_impl(config, item),
-        // In case we need to support `macro foo {}` items
-        // syn::Item::Verbatim(item) => macro_impl(config, item),
-        // for macro_rules! syntax (both looks useless, since it's always easier
-        // to implement custom `macro_rules!` )
-        // syn::Item::Macro(item) => macro_impl(config, item),
-        v => Err(error!(v.span() => "Expected function or module" )),
-    }
+    timed!("munch_impl", {
+        let item = syn::parse2::<syn::Item>(item)?;
+        let config = Config::from_attrs(args)?;
+        match item {
+            syn::Item::Fn(item) => function_impl(config, item),
+            syn::Item::Mod(item) => module_impl(config, item),
+            // In case we need to support `macro foo {}` items
+            // syn::Item::Verbatim(item) => macro_impl(config, item),
+            // for macro_rules! syntax (both looks useless, since it's always easier
+            // to implement custom `macro_rules!` )
+            // syn::Item::Macro(item) => macro_impl(config, item),
+            v => Err(error!(v.span() => "Expected function or module" )),
+        }
+    })
 }
 
 fn module_impl(config: Config, item: syn::ItemMod) -> Result<TokenStream> {
@@ -192,18 +194,20 @@ fn function_impl(config: Config, item: syn::ItemFn) -> Result<TokenStream> {
     );
     let name = item.sig.ident.clone();
 
-    let context = TemplateContext::from_fn(item)?;
+    let context = timed!("template_context", { TemplateContext::from_fn(item)? });
     build_and_compile_crate(&name, &context, config)
 }
 
 pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenStream> {
-    let input: ProxyInput = syn::parse2(input)?;
+    timed!("proxy_impl", {
+        let input: ProxyInput = syn::parse2(input)?;
 
-    dylib::load_and_run_entry(
-        std::path::Path::new(&input.proxy_args.dylib_path.value()),
-        &input.proxy_args.source_hash.value(),
-        input.tokens,
-    )
+        dylib::load_and_run_entry(
+            std::path::Path::new(&input.proxy_args.dylib_path.value()),
+            &input.proxy_args.source_hash.value(),
+            input.tokens,
+        )
+    })
 }
 
 impl TemplateContext {
@@ -284,7 +288,10 @@ fn build_and_compile_crate(
         config.split_cache,
         include_source_hash,
     )?;
-    let dylib = dylib::compile_crate(&generated, config.profile)?;
+
+    let dylib = timed!("compile_crate", {
+        dylib::compile_crate(&generated, config.profile)?
+    });
 
     debug!("generated crate: {}", generated.source_dir.display());
 

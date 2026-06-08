@@ -10,6 +10,6 @@ edition = "2024"
 crate-type = ["dylib"]
 
 [dependencies]
-token-goblin-runtime = { path = "/Users/m5-vladimir/work/module-experiments/runtime" } # "0.1"
+token-goblin-runtime = "0.1"
 
 # goblin-stencil: dependencies
