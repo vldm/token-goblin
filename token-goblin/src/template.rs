@@ -9,9 +9,11 @@ use crate::{
     Result,
     dylib::GeneratedCrate,
     metadata::{Dependency, Metadata, ValueOrWorkspace},
+    path::FsLockGuard,
 };
 
 const MARKER: &str = "goblin-stencil:";
+const TOKEN_GOBLIN_LOCK_FILE: &str = "token-goblin.lock";
 /// Values substituted into template marker lines.
 #[derive(Debug)]
 pub struct TemplateContext {
@@ -60,6 +62,8 @@ pub fn render_crate(
     }
     debug!("rendering crate into {}", output_dir.display());
     debug!("context: {:?}", context);
+
+    let lock_file = FsLockGuard::new(output_dir.join(TOKEN_GOBLIN_LOCK_FILE))?;
     let template_dir = template_root();
     render_template_tree(&template_dir, &output_dir, context)?;
 
@@ -68,6 +72,7 @@ pub fn render_crate(
         per_project_cache,
         context.package_name.clone(),
         source_hash,
+        lock_file,
     ))
 }
 

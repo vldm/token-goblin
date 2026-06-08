@@ -54,7 +54,7 @@ impl BuildProfile {
 // }
 
 /// Collected information about generated crate, that is ready to be compiled.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct GeneratedCrate {
     /// Root directory of the generated crate
     /// Used to calculate `build-dir`, `target-dir`, and provide path to `Cargo.toml`.
@@ -68,6 +68,9 @@ pub struct GeneratedCrate {
     /// Stable hash of template inputs used to build this crate,
     /// encoded in hex without `0x` prefix.
     pub source_hash: String,
+
+    /// Lock file path used to prevent concurrent builds of the same crate.
+    pub lock_file: path::FsLockGuard,
 }
 
 impl GeneratedCrate {
@@ -76,6 +79,7 @@ impl GeneratedCrate {
         per_project_cache: bool,
         crate_name: impl Into<String>,
         source_hash: impl Into<String>,
+        lock_file: path::FsLockGuard,
     ) -> Self {
         let source_hash = source_hash.into();
 
@@ -85,6 +89,7 @@ impl GeneratedCrate {
             build_dir,
             crate_name: crate_name.into(),
             source_hash,
+            lock_file,
         }
     }
 

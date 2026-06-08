@@ -2,7 +2,8 @@
 name = "token-goblin"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.89"
+# Used features: span.file() -> 1.88, try_lock() -> 1.89
 
 [lib]
 proc-macro = true

@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fs::{File, TryLockError},
+    path::{Path, PathBuf},
+};
 
 use proc_macro2::Span;
 
@@ -103,4 +106,43 @@ pub fn calculate_generated_path(ident: &syn::Ident) -> (PathBuf, bool) {
 
 fn sanitize_path(path: &str) -> String {
     path.replace(['\\', '/'], "_")
+}
+
+#[derive(Debug)]
+pub struct FsLockGuard {
+    path: PathBuf,
+    file: File,
+}
+
+impl FsLockGuard {
+    pub fn new(path: PathBuf) -> Result<Self> {
+        let file = File::create(&path)
+            .map_err(|e| error!(Span::call_site() => "Failed to create lock file: {e}"))?;
+
+        let this = Self { path, file };
+        this.lock()?;
+        Ok(this)
+    }
+    fn lock(&self) -> Result<()> {
+        match self.file.try_lock() {
+            Err(TryLockError::WouldBlock) => {
+                debug!("Waiting for lock file: {}", self.path.display());
+                self.file.lock()
+            }
+            Err(TryLockError::Error(e)) => Err(e),
+            Ok(()) => Ok(()),
+        }
+        .map_err(|e| error!(Span::call_site() => "Failed to lock lock file: {e}"))
+    }
+    fn unlock(&self) -> Result<()> {
+        self.file
+            .unlock()
+            .map_err(|e| error!(Span::call_site() => "Failed to unlock lock file: {e}"))
+    }
+}
+
+impl Drop for FsLockGuard {
+    fn drop(&mut self) {
+        self.unlock().unwrap();
+    }
 }
