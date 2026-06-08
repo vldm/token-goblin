@@ -10,6 +10,8 @@ pub fn crate_root_pub(input: TokenStream) -> TokenStream {
 }
 
 mod child {
+    use crate::crate_root_pub;
+
     fn uses_public() {
         let _: i32 = crate_root_pub!(42);
     }
@@ -44,8 +46,11 @@ mod outer {
         }
     }
 
-    // Parent-module access (`super_visible!(…)`) belongs here once `pub(super)` is
-    // applied to the generated macro; see `module_visibility_fail.rs` for violations.
+    use inner::super_visible;
+
+    fn from_outer() {
+        let _: i32 = super_visible!(1);
+    }
 }
 
 // pub(crate): visible in sibling modules
@@ -55,6 +60,8 @@ pub(crate) fn crate_visible(input: TokenStream) -> TokenStream {
 }
 
 mod sibling {
+    use crate::crate_visible;
+
     fn uses_crate_visible() {
         let _: i32 = crate_visible!(1);
     }

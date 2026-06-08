@@ -12,7 +12,7 @@ mod sealed {
 
 fn from_outside_sealed() {
     let _: i32 = sealed::secret!(1);
-    //~^ ERROR cannot find `secret`
+    //~^ ERROR macro import `secret` is private
 }
 
 // private in sibling module: not visible from sibling
@@ -35,7 +35,7 @@ mod b {
 // pub(super): not visible outside parent module
 mod grandparent {
     mod parent {
-        mod child {
+        pub mod child {
             use proc_macro2::TokenStream;
 
             #[token_goblin::munch]

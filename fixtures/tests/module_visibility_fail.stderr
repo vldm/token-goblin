@@ -1,0 +1,71 @@
+error[E0603]: macro import `secret` is private
+ --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
+  |
+  |     let _: i32 = sealed::secret!(1);
+  |                          ^^^^^^ private macro import
+  |
+note: the macro import `secret` is defined here...
+ --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
+  |
+  |     fn secret(input: TokenStream) -> TokenStream {
+  |        ^^^^^^
+note: ...and refers to the macro `secret_secret_740c63c3d05b6ade75d3a6d3d61f84b7b7dbdeffe8425833195cdad19e9f1776` which is defined here
+ --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
+  |
+  |     #[token_goblin::munch]
+  |     ^^^^^^^^^^^^^^^^^^^^^^
+  = note: this error originates in the attribute macro `token_goblin::munch` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0603]: macro import `hidden` is private
+ --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
+  |
+  |         let _: i32 = super::a::hidden!(1);
+  |                                ^^^^^^ private macro import
+  |
+note: the macro import `hidden` is defined here...
+ --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
+  |
+  |     fn hidden(input: TokenStream) -> TokenStream {
+  |        ^^^^^^
+note: ...and refers to the macro `hidden_hidden_d43d43bd0448b60fa542bea90285fd23e7b8a905e3e32a46cae3a42f1d6655cf` which is defined here
+ --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
+  |
+  |     #[token_goblin::munch]
+  |     ^^^^^^^^^^^^^^^^^^^^^^
+  = note: this error originates in the attribute macro `token_goblin::munch` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0603]: macro import `super_only` is private
+ --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
+  |
+  |             let _: i32 = super::parent::child::super_only!(1);
+  |                                                ^^^^^^^^^^ private macro import
+  |
+note: the macro import `super_only` is defined here...
+ --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
+  |
+  |             pub(super) fn super_only(input: TokenStream) -> TokenStream {
+  |                           ^^^^^^^^^^
+note: ...and refers to the macro `super_only_super_only_ec1d02015187ef1db0dbcfb88e1fa7a3439df581562bf50ab9048ce111f7f84b` which is defined here
+ --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
+  |
+  |             #[token_goblin::munch]
+  |             ^^^^^^^^^^^^^^^^^^^^^^
+  = note: this error originates in the attribute macro `token_goblin::munch` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0603]: macro import `bar` is private
+ --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
+  |
+  |     let _: i32 = bar::bar!(1);
+  |                       ^^^ private macro import
+  |
+note: the macro import `bar` is defined here...
+ --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
+  |
+  |     fn bar(input: TokenStream) -> TokenStream {
+  |        ^^^
+note: ...and refers to the macro `bar_bar_e217b59b1b3cd3e196637993929e3f553766bb5f2ce00cc2bccf85af823b5d47` which is defined here
+ --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
+  |
+  |     #[token_goblin::munch]
+  |     ^^^^^^^^^^^^^^^^^^^^^^
+  = note: this error originates in the attribute macro `token_goblin::munch` (in Nightly builds, run with -Z macro-backtrace for more info)
