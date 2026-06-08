@@ -1,7 +1,7 @@
 use std::{path::PathBuf, str::FromStr};
 
 use proc_macro2::{Span, TokenStream};
-use quote::{ToTokens, quote, quote_spanned};
+use quote::{ToTokens, format_ident, quote, quote_spanned};
 use syn::{Token, spanned::Spanned};
 
 use crate::{
@@ -201,7 +201,10 @@ impl TemplateContext {
         let name = &item.sig.ident;
         let package_name = format!("token-goblin-{}", name.to_string().replace('_', "-"));
 
-        item.vis = syn::Visibility::Public(syn::token::Pub::default());
+        let visibility = std::mem::replace(
+            &mut item.vis,
+            syn::Visibility::Public(syn::token::Pub::default()),
+        );
 
         let context = TemplateContext {
             package_name: package_name.clone(),
@@ -210,7 +213,7 @@ impl TemplateContext {
             entry: format!("impls::{name}(input)"),
             impls: quote! { #item }.to_string(),
 
-            visibility: item.vis.clone(),
+            visibility,
         };
 
         Ok(context)
@@ -291,16 +294,33 @@ fn build_and_compile_crate(
         dylib_path: syn::LitStr::new(&dylib.dylib_path.display().to_string(), Span::call_site()),
     };
 
+    let mod_name = name;
+
     // Using mixed site to resolve `$crate`.
     let crate_proxy = quote_spanned! { Span::mixed_site() =>
         $crate::proxy!
     };
+
+    // for each macro
+    let visibility = template_context.visibility.clone();
+    let macro_glob = if matches!(visibility, syn::Visibility::Public(_)) {
+        quote! {#[macro_export]}
+    } else {
+        quote! {}
+    };
+
+    let postfix = postfix_hash(name.span());
+    let macro_name = format_ident!("{}_{}_{}", mod_name, name, postfix);
     let out = quote! {
-        macro_rules! #name {
+        #macro_glob
+        #[doc(hidden)]
+        macro_rules! #macro_name {
             ($($args:tt)*) => {
                 #crate_proxy{#proxy_input, $($args)*}
             };
         }
+
+        #visibility use #macro_name as #name;
     };
 
     debug!("out: {}", out);
@@ -315,6 +335,18 @@ fn build_and_compile_crate(
         );
     }
     Ok(out)
+}
+
+// Location hash to prevent collisions in macro names
+// (when used pub crate, and require #[macro_export] to be visible).
+fn postfix_hash(span: Span) -> String {
+    let span = span.unwrap();
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"postfix");
+    hasher.update(span.file().as_bytes());
+    hasher.update(&span.line().to_le_bytes());
+    hasher.update(&span.column().to_le_bytes());
+    hasher.finalize().to_hex().to_string()
 }
 
 fn get_env_vars() -> String {

@@ -13,7 +13,24 @@ That's why we:
 
 
 ## Source hash control
-To ensure that macro declaration 
+Since process of `charm` expansion and declaration is separated in time, we need to ensure that macro declaration and caller expect same macro.
+We add source hash into macro name, and include it into proxy macro call.
+
+## Visibiltity hack
+
+Historically `macro_rules` have it's own namespace. Therefore exporting them 
+require `#[macro_export]` attribute.
+To allow users to use `charm` with regular visibility, we use hack, that automatically
+adds `#[macro_export]` attribute to the macro declaration, when needed.
+Actually any `charm` is expanded into `macro_rules!` with special names, that prevent name collisions, and then exported with needed visibility.
+```rust
+#[macro_export] // automatically added when needed
+macro_rules! foo_<hash> {
+    ...
+}
+pub(..) use foo_<hash> as foo;
+```
+
 
 ## `proxy-macro`
 Shows, how we generate inlinable proc-macro.

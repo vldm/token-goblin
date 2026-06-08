@@ -9,6 +9,13 @@ macro_rules! testbed2 {
     (inner) => {
         testbed2!(some_inner);
     };
+
+    (pub_inner) => {
+        #[munch]
+        pub fn pub_inner(input: TokenStream) -> TokenStream {
+            input
+        }
+    };
     ($foo:ident) => {
         #[allow(unused_macros, reason = "inner idents cannot be accessed outer")]
         #[munch]
@@ -21,15 +28,18 @@ macro_rules! testbed2 {
 testbed2!(foo);
 
 testbed2!(inner);
-testbed2!(inner);
+testbed2!(pub_inner);
 
-mod bar {
+mod private {
     use super::*;
     #[munch]
     fn bar(input: TokenStream) -> TokenStream {
         input
     }
 
+    // testbed2!(pub_inner);
+
+    // Cannot define macro with same name publicly available.
     testbed2!(inner);
 
     #[test]
