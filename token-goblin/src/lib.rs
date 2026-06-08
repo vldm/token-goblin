@@ -2,18 +2,10 @@
 use proc_macro::TokenStream;
 #[macro_use]
 mod errors;
+#[macro_use]
+mod timings;
 
 type Result<T, E = syn::Error> = std::result::Result<T, E>;
-
-macro_rules! timed {
-    ($name: literal, $block: block) => {{
-        let start = std::time::Instant::now();
-        let result = $block;
-        let duration = start.elapsed();
-        debug!("{} duration: {:?}", $name, duration);
-        result
-    }};
-}
 
 mod dylib;
 mod macro_impl;
@@ -25,7 +17,11 @@ use errors::MapCompileError;
 
 /// Set to 'true' to enable debug prints.
 #[allow(unexpected_cfgs, reason = "custom made config")]
-pub(crate) const DEBUG: bool = true || cfg!(token_goblin_debug);
+pub(crate) const DEBUG: bool = cfg!(token_goblin_debug) || DEBUG_ENV || PRINT_TIMINGS;
+
+/// Set to 'true' to enable printing of timings.
+/// (Also requires `DEBUG` to be enabled)
+pub(crate) const PRINT_TIMINGS: bool = false;
 
 /// Set to 'true' to enable debug prints of environment variables.
 /// (Also requires `DEBUG` to be enabled)
@@ -40,9 +36,11 @@ pub(crate) const DEBUG_ENV: bool = false;
 ///
 #[proc_macro]
 pub fn proxy(input: TokenStream) -> TokenStream {
-    macro_impl::proxy_impl(input.into())
-        .map_compile_error()
-        .into()
+    timed!("proxy", {
+        macro_impl::proxy_impl(input.into())
+            .map_compile_error()
+            .into()
+    })
 }
 
 ///
@@ -71,12 +69,17 @@ pub fn proxy(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn munch(attr: TokenStream, item: TokenStream) -> TokenStream {
-    macro_impl::munch_impl(attr.into(), item.into())
-        .map_compile_error()
-        .into()
+    timed!("munch", {
+        macro_impl::munch_impl(attr.into(), item.into())
+            .map_compile_error()
+            .into()
+    })
 }
 
 #[proc_macro_derive(Snif)]
 pub fn snif(input: TokenStream) -> TokenStream {
-    input
+    timed!("snif", {
+        // TODO
+        input
+    })
 }

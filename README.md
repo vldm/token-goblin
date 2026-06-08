@@ -1,4 +1,33 @@
-token_goblin
+# Token Goblin — munches your tokens, spits out macros
+
+`token-goblin` is a proc-macro library for defining proc-macro-like transformations inline, directly inside your crate.
+
+It is inspired by crates like `crabtime` and `inline-proc`, but aims to provide a more polished, flexible, and ergonomic API.
+
+## Getting started
+
+Add `token-goblin` to your crate:
+
+```toml
+[dependencies]
+token-goblin = "0.1.0"
+```
+Then teach the goblin a new **charm**:
+
+```rust
+#[token_goblin::munch]
+fn foo(input: TokenStream) -> TokenStream {
+    input
+}
+```
+
+This generates a new macro, or **charm**, named foo!:
+```rust
+foo!(bar baz); // will expand to `bar baz`
+```
+In other words, `#[munch]` turns the function foo into a charm that munches input tokens and spits out new tokens.
+
+Note: beacause token-goblin are macros that generate macros, **charm** is used in docs for clarity.
 
 # Inline proc-macro
 

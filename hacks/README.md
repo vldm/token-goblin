@@ -12,6 +12,9 @@ That's why we:
 2. additionally check result of `rustc -vV` to be the same.
 
 
+## Source hash control
+To ensure that macro declaration 
+
 ## `proxy-macro`
 Shows, how we generate inlinable proc-macro.
 
