@@ -16,28 +16,7 @@ fn main() {
         output.status
     );
 
-    let meta = String::from_utf8(output.stdout).expect("rustc -vV stdout is not valid UTF-8");
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR is not set");
-    let path = Path::new(&out_dir).join("runner_rustc_meta.rs");
-    let escaped = escape_for_rust_str(&meta);
-    std::fs::write(
-        &path,
-        format!("pub const RUSTC_META: &str = \"{escaped}\";"),
-    )
-    .expect("failed to write runner rustc metadata");
-}
-
-fn escape_for_rust_str(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| match ch {
-            '\\' => "\\\\".to_string(),
-            '"' => "\\\"".to_string(),
-            '\n' => "\\n".to_string(),
-            '\r' => "\\r".to_string(),
-            '\t' => "\\t".to_string(),
-            ch if ch.is_control() => format!("\\x{:02x}", ch as u8),
-            ch => ch.to_string(),
-        })
-        .collect()
+    let path = Path::new(&out_dir).join("rustc_meta.out");
+    std::fs::write(&path, &output.stdout).expect("failed to write rustc metadata");
 }

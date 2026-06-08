@@ -13,7 +13,6 @@ use crate::{
 
 pub struct ProxyArgs {
     pub dylib_path: syn::LitStr,
-    pub source_hash: syn::LitStr,
 }
 impl syn::parse::Parse for ProxyArgs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
@@ -21,23 +20,14 @@ impl syn::parse::Parse for ProxyArgs {
         syn::braced!(content in input);
 
         let dylib_path = content.parse()?;
-        content.parse::<syn::Token![,]>()?;
-        let source_hash = content.parse()?;
-        Ok(Self {
-            dylib_path,
-            source_hash,
-        })
+        Ok(Self { dylib_path })
     }
 }
 impl ToTokens for ProxyArgs {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let brace = syn::token::Brace::default();
         brace.surround(tokens, |tokens| {
-            let comma = syn::token::Comma::default();
-
             tokens.extend(self.dylib_path.to_token_stream());
-            tokens.extend(comma.into_token_stream());
-            tokens.extend(self.source_hash.to_token_stream());
         });
     }
 }
@@ -202,7 +192,6 @@ pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenS
 
     dylib::load_and_run_entry(
         std::path::Path::new(&input.proxy_args.dylib_path.value()),
-        &input.proxy_args.source_hash.value(),
         input.tokens,
     )
 }
@@ -294,7 +283,6 @@ fn build_and_compile_crate(
 
     let proxy_input = ProxyArgs {
         dylib_path: syn::LitStr::new(&dylib.dylib_path.display().to_string(), Span::call_site()),
-        source_hash: syn::LitStr::new(&generated.source_hash, Span::call_site()),
     };
 
     // Using mixed site to resolve `$crate`.

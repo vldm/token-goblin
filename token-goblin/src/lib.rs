@@ -17,14 +17,17 @@ use errors::MapCompileError;
 
 /// Set to 'true' to enable debug prints.
 #[allow(unexpected_cfgs, reason = "custom made config")]
-pub(crate) const DEBUG: bool = cfg!(token_goblin_debug) || DEBUG_ENV || PRINT_TIMINGS;
+pub(crate) const DEBUG: bool = cfg!(token_goblin_debug);
 
 /// Set to 'true' to enable printing of timings.
-/// (Also requires `DEBUG` to be enabled)
-pub(crate) const PRINT_TIMINGS: bool = false;
+/// (Also requires `DEBUG` to be enabled, see above)
+#[allow(unexpected_cfgs, reason = "custom made config")]
+pub(crate) const PRINT_TIMINGS: bool = cfg!(token_goblin_print_timings);
 
 /// Set to 'true' to enable debug prints of environment variables.
 /// (Also requires `DEBUG` to be enabled)
+///
+/// Internal only feature, not exposed to the user.
 pub(crate) const DEBUG_ENV: bool = false;
 
 // ===============================

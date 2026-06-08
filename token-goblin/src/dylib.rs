@@ -17,8 +17,10 @@ use crate::{Result, path, rustc_meta};
 /// Cargo build profile for the generated dylib crate.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BuildProfile {
+    #[cfg_attr(feature = "use-debug-profile", default)]
     Debug,
-    #[default]
+
+    #[cfg_attr(not(feature = "use-debug-profile"), default)]
     Release,
 }
 impl FromStr for BuildProfile {
@@ -147,14 +149,13 @@ fn cargo_command() -> Command {
     Command::new(cargo)
 }
 
-/// Try find dylib, check if it has same source hash, and return if it is valid.
+/// Check if dylib is exists (and was built with compatible toolchain)
 fn check_cached_dylib(generated: &GeneratedCrate, profile: BuildProfile) -> Option<DylibBuild> {
     let dylib_path = generated.dylib_path(profile);
     if !dylib_path.is_file() {
         return None;
     }
-    let source_hash = generated.source_hash.clone();
-    if let Err(e) = load_library(&dylib_path, &source_hash) {
+    if let Err(e) = load_library(&dylib_path) {
         debug!("cached dylib is not valid: {e}");
         return None;
     }
@@ -194,8 +195,8 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
         .arg("--target-dir")
         .arg(generated.target_dir())
         .env("CARGO_BUILD_BUILD_DIR", &generated.build_dir)
-        .env("RUSTC", env!("TOKEN_GOBLIN_RUSTC"))
-        .env("TOKEN_GOBLIN_SOURCE_HASH", &generated.source_hash);
+        .env("RUSTC", env!("TOKEN_GOBLIN_RUSTC"));
+
     if let Some(flag) = profile.cargo_release_flag() {
         cmd.arg(flag);
     }
@@ -279,8 +280,8 @@ fn read_dylib_meta(library: &libloading::Library, dylib_path: &Path) -> Result<&
 }
 
 /// Load a dylib and return the library handle.
-/// Ensure that generated library has compatibe meta and source hash.
-pub fn load_library(dylib_path: &Path, source_hash: &str) -> Result<libloading::Library> {
+/// Ensure that generated library has compatible rustc metadata.
+pub fn load_library(dylib_path: &Path) -> Result<libloading::Library> {
     // Safety: our library doesn't contain any "_start" or "OnLoad" methods.
     let library = unsafe { libloading::Library::new(dylib_path) }.map_err(|e| {
         error!(
@@ -290,18 +291,14 @@ pub fn load_library(dylib_path: &Path, source_hash: &str) -> Result<libloading::
         )
     })?;
     let lib_meta = read_dylib_meta(&library, dylib_path)?;
-    rustc_meta::ensure_compatible(lib_meta, source_hash)?;
+    rustc_meta::ensure_compatible(lib_meta)?;
 
     Ok(library)
 }
 
 /// Load a dylib, invoke `entry`, and return the resulting token stream.
-pub fn load_and_run_entry(
-    dylib_path: &Path,
-    source_hash: &str,
-    input: TokenStream,
-) -> Result<TokenStream> {
-    let library = load_library(dylib_path, source_hash)?;
+pub fn load_and_run_entry(dylib_path: &Path, input: TokenStream) -> Result<TokenStream> {
+    let library = load_library(dylib_path)?;
 
     /// Safety: we know the type of entrypoint.
     let entry: libloading::Symbol<EntryFn> = unsafe { library.get(b"entry") }

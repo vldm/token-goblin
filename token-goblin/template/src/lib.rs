@@ -2,15 +2,13 @@
 #[allow(unused)]
 use token_goblin_runtime::*;
 
-mod generated_meta {
-    include!(concat!(env!("OUT_DIR"), "/meta.rs"));
-}
-
 mod impls;
+
+static META: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rustc_meta.out"));
 
 #[unsafe(no_mangle)]
 pub extern "C" fn meta() -> *const std::ffi::c_char {
-    generated_meta::META.as_ptr().cast()
+    META.as_ptr().cast()
 }
 
 #[unsafe(no_mangle)]

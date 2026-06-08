@@ -7,7 +7,6 @@ fn testbed(input: TokenStream) -> TokenStream {
 
 macro_rules! testbed2 {
     (inner) => {
-        #[allow(unused_macros, reason = "inner idents cannot be accessed outer")]
         testbed2!(some_inner);
     };
     ($foo:ident) => {
@@ -38,4 +37,10 @@ mod bar {
         let x = bar!(testbed!(foo!(12)));
         assert_eq!(x, 12);
     }
+}
+
+#[test]
+fn test_short() {
+    let x = foo!(12);
+    assert_eq!(x, 12);
 }

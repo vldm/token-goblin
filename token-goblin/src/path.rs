@@ -128,7 +128,8 @@ impl FsLockGuard {
     /// - Lock guard
     /// - Error if failed to create lock file or lock it.
     pub fn new(path: PathBuf) -> Result<Self> {
-        let file = File::create(&path)
+        let file = std::fs::create_dir_all(path.parent().unwrap())
+            .and_then(|()| File::create(&path))
             .map_err(|e| error!(Span::call_site() => "Failed to create lock file: {e}"))?;
 
         let this = Self { path, file };

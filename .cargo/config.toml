@@ -1,0 +1,8 @@
+# Ensure that printing and debug enabled.
+[build]
+rustflags = [
+    "--cfg",
+    "token_goblin_print_timings",
+    "--cfg",
+    "token_goblin_debug",
+]
