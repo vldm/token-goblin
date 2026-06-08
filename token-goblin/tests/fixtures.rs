@@ -7,6 +7,11 @@ const FIXTURE_CASES: &[(&str, &str)] = &[
     ("target-dir", "configs/target-dir.toml"),
 ];
 
+const VISIBILITY_FIXTURES: &[&str] = &[
+    "tests/module_visibility_pass.rs",
+    "tests/module_visibility_fail.rs",
+];
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -72,6 +77,14 @@ fn smoke_macro_fixtures_run_with_stable_toolchain() {
 }
 
 #[test]
+fn module_visibility_ui() {
+    let tests = trybuild::TestCases::new();
+    let root = fixtures_root();
+    tests.pass(root.join(VISIBILITY_FIXTURES[0]));
+    tests.compile_fail(root.join(VISIBILITY_FIXTURES[1]));
+}
+
+#[test]
 fn fixture_paths_exist() {
     let fixtures = fixtures_root();
     assert!(
@@ -93,6 +106,15 @@ fn fixture_paths_exist() {
             config.is_file(),
             "fixture config `{name}` missing: {}",
             config.display()
+        );
+    }
+
+    for rel in VISIBILITY_FIXTURES {
+        let path = fixtures.join(rel);
+        assert!(
+            path.is_file(),
+            "visibility fixture missing: {}",
+            path.display()
         );
     }
 }

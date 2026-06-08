@@ -209,6 +209,8 @@ impl TemplateContext {
             source_metadata: metadata::load_dependencies()?,
             entry: format!("impls::{name}(input)"),
             impls: quote! { #item }.to_string(),
+
+            visibility: item.vis.clone(),
         };
 
         Ok(context)
@@ -249,6 +251,10 @@ impl TemplateContext {
             source_metadata: metadata::load_dependencies()?,
             entry: format!("impls::{name}(input)"),
             impls: quote! { #(#content)* }.to_string(),
+
+            // TODO: Add support of multiple visibilities?
+            // Per fn
+            visibility: item.vis.clone(),
         })
     }
 }
@@ -300,14 +306,14 @@ fn build_and_compile_crate(
     debug!("out: {}", out);
     if crate::DEBUG_ENV {
         debug!("env vars: {}", get_env_vars());
+        let span: proc_macro::Span = name.span().unwrap();
+        debug!(
+            "span_source_file: {}, {:?}, line: {}",
+            span.file(),
+            span.local_file(),
+            span.line()
+        );
     }
-    let span: proc_macro::Span = name.span().unwrap();
-    debug!(
-        "span_source_file: {}, {:?}, line: {}",
-        span.file(),
-        span.local_file(),
-        span.line()
-    );
     Ok(out)
 }
 

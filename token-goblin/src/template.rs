@@ -3,7 +3,10 @@
 //! Simple line based template engine:
 //! - Find `MARKER` in line and replace whole line with
 
-use std::path::{Path, PathBuf};
+use std::{
+    fmt::{self, Debug},
+    path::{Path, PathBuf},
+};
 
 use crate::{
     Result,
@@ -15,13 +18,26 @@ use crate::{
 const MARKER: &str = "goblin-stencil:";
 const TOKEN_GOBLIN_LOCK_FILE: &str = "token-goblin.lock";
 /// Values substituted into template marker lines.
-#[derive(Debug)]
 pub struct TemplateContext {
     pub package_name: String,
     pub package_extra: String,
     pub source_metadata: Metadata,
     pub entry: String,
     pub impls: String,
+
+    pub visibility: syn::Visibility,
+}
+// custom because syn::Visibility doesn't implement Debug
+impl Debug for TemplateContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("TemplateContext {")?;
+        f.write_str("package_name: ")?;
+        f.write_str(&self.package_name)?;
+        f.write_str("package_extra: ")?;
+        f.write_str(&self.package_extra)?;
+        f.write_str("}")?;
+        Ok(())
+    }
 }
 
 /// Root directory of the checked-in crate template.
@@ -147,9 +163,10 @@ fn render_value_dependency(
         .ok_or_else(|| error!("manifest path has no parent: {}", manifest_path.display()))?;
 
     let value = rewrite_dependency_paths(value, manifest_dir, name)?;
-    let mut root = toml::map::Map::new();
-    root.insert(name.to_string(), value);
-    toml::to_string(&root).map_err(|e| error!("{e}"))
+    Ok(format!(
+        "{name} = {{ {} }}",
+        toml::to_string(&value).map_err(|e| error!("{e}"))?
+    ))
 }
 
 // Replace relative paths to absolute paths
