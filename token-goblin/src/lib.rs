@@ -27,6 +27,10 @@ use errors::MapCompileError;
 #[allow(unexpected_cfgs, reason = "custom made config")]
 pub(crate) const DEBUG: bool = true || cfg!(token_goblin_debug);
 
+/// Set to 'true' to enable debug prints of environment variables.
+/// (Also requires `DEBUG` to be enabled)
+pub(crate) const DEBUG_ENV: bool = false;
+
 // ===============================
 // Macros entry points
 // ===============================

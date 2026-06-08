@@ -135,6 +135,24 @@ fn cargo_command() -> Command {
     Command::new(cargo)
 }
 
+/// Try find dylib, check if it has same source hash, and return if it is valid.
+fn check_cached_dylib(generated: &GeneratedCrate, profile: BuildProfile) -> Option<DylibBuild> {
+    let dylib_path = generated.dylib_path(profile);
+    if !dylib_path.is_file() {
+        return None;
+    }
+    let source_hash = generated.source_hash.clone();
+    if let Err(e) = load_library(&dylib_path, &source_hash) {
+        debug!("cached dylib is not valid: {e}");
+        return None;
+    }
+    Some(DylibBuild {
+        dylib_path,
+        profile,
+        crate_name: generated.crate_name.clone(),
+    })
+}
+
 /// Compile a generated crate and return the resolved dylib path.
 pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Result<DylibBuild> {
     let manifest_path = generated.manifest_path();
@@ -144,6 +162,9 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
             "generated crate manifest not found: {}",
             manifest_path.display()
         ));
+    }
+    if let Some(dylib) = check_cached_dylib(generated, profile) {
+        return Ok(dylib);
     }
 
     let mut cmd = cargo_command();
@@ -236,14 +257,10 @@ fn read_dylib_meta(library: &libloading::Library, dylib_path: &Path) -> Result<&
     })
 }
 
-/// Load a dylib, invoke `entry`, and return the resulting token stream.
-pub fn load_and_run_entry(
-    dylib_path: &Path,
-    source_hash: &str,
-    input: TokenStream,
-) -> Result<TokenStream> {
-    debug!("loading: {}", dylib_path.display());
-    // Safety: our library is fresh build and should not contain any "_start"\"OnLoad" methods
+/// Load a dylib and return the library handle.
+/// Ensure that generated library has compatibe meta and source hash.
+pub fn load_library(dylib_path: &Path, source_hash: &str) -> Result<libloading::Library> {
+    // Safety: our library doesn't contain any "_start" or "OnLoad" methods.
     let library = unsafe { libloading::Library::new(dylib_path) }.map_err(|e| {
         error!(
             Span::call_site() =>
@@ -251,10 +268,19 @@ pub fn load_and_run_entry(
             dylib_path.display()
         )
     })?;
-
     let lib_meta = read_dylib_meta(&library, dylib_path)?;
     rustc_meta::ensure_compatible(lib_meta, source_hash)?;
-    debug!("calling entry with input: {}", input);
+
+    Ok(library)
+}
+
+/// Load a dylib, invoke `entry`, and return the resulting token stream.
+pub fn load_and_run_entry(
+    dylib_path: &Path,
+    source_hash: &str,
+    input: TokenStream,
+) -> Result<TokenStream> {
+    let library = load_library(dylib_path, source_hash)?;
 
     /// Safety: we know the type of entrypoint.
     let entry: libloading::Symbol<EntryFn> = unsafe { library.get(b"entry") }

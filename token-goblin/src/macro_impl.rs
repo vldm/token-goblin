@@ -313,14 +313,22 @@ fn build_and_compile_crate(
     };
 
     debug!("out: {}", out);
-    // debug!("env vars: {}", get_env_vars()?);
+    if crate::DEBUG_ENV {
+        debug!("env vars: {}", get_env_vars());
+    }
+    let span: proc_macro::Span = name.span().unwrap();
+    debug!(
+        "span_source_file: {}, {:?}, line: {}",
+        span.file(),
+        span.local_file(),
+        span.line()
+    );
     Ok(out)
 }
 
-// fn get_env_vars() -> Result<String> {
-//     let env_vars = std::env::vars()
-//         .map(|(key, value)| format!("{}={}", key, value))
-//         .collect::<Vec<_>>()
-//         .join("\n");
-//     Ok(env_vars)
-// }
+fn get_env_vars() -> String {
+    std::env::vars()
+        .map(|(key, value)| format!("{key}={value}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
