@@ -16,7 +16,8 @@ The mix of `crabtime` and `inline-proc`
 
 - [ ] `Reflect!<Type>` - allows collecting derive macro, and extend it in future.
 - [x] Should use cargo build-cache and
-- [ ] can work with `cache-proc-macros`.
+- [ ] can work with `cache-proc-macros`. For cargo it should already work, since we only touch OUT_DIR and generated code is fully depend on input (only ENV - CARGO_*, and extern `mod X` can be questionable)
+- [ ] (cache related bug): Currently we store only "latest" version of macro expansion. But r-a can expect old expansion to still be available - which lead to wrong source hash.
 - [ ] Remove #[allow(unused)]
 - [ ] Support IDE: macro declaration should generate `rust-analyzer` shim for better type information.
 - [ ] Support workspace dependencies.

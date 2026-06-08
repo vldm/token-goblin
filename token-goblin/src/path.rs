@@ -108,6 +108,13 @@ fn sanitize_path(path: &str) -> String {
     path.replace(['\\', '/'], "_")
 }
 
+/// Lock file guard.
+/// Used to prevent concurrent pipeline running for the same crate.
+///
+/// E.g.
+/// During macro expansion, we frist trying to create template,
+/// then compile crate to dylib, and copy output to `OUT_DIR`.
+/// To prevent race condition, we use lock file.
 #[derive(Debug)]
 pub struct FsLockGuard {
     path: PathBuf,
@@ -115,6 +122,11 @@ pub struct FsLockGuard {
 }
 
 impl FsLockGuard {
+    /// Create lock file and lock it.
+    /// If lock file is already locked, wait for it to be unlocked.
+    /// Returns:
+    /// - Lock guard
+    /// - Error if failed to create lock file or lock it.
     pub fn new(path: PathBuf) -> Result<Self> {
         let file = File::create(&path)
             .map_err(|e| error!(Span::call_site() => "Failed to create lock file: {e}"))?;

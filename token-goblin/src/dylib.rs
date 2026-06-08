@@ -100,7 +100,14 @@ impl GeneratedCrate {
         self.source_dir.join("target")
     }
 
+    // Path to versioned dylib in target directory.
     pub fn dylib_path(&self, profile: BuildProfile) -> PathBuf {
+        let versioned_crate_name = format!("{}_{}", self.crate_name, self.source_hash);
+        dylib_path(&self.target_dir(), profile, &versioned_crate_name)
+    }
+
+    // Path to source dylib in target directory.
+    pub fn dylib_src_path(&self, profile: BuildProfile) -> PathBuf {
         dylib_path(&self.target_dir(), profile, &self.crate_name)
     }
 }
@@ -157,6 +164,14 @@ fn check_cached_dylib(generated: &GeneratedCrate, profile: BuildProfile) -> Opti
         crate_name: generated.crate_name.clone(),
     })
 }
+// Copy dylib artifact to versioned path
+fn copy_dylib_artifact(generated: &GeneratedCrate, profile: BuildProfile) -> Result<PathBuf> {
+    let src_path = generated.dylib_src_path(profile);
+    let dst_path = generated.dylib_path(profile);
+    std::fs::copy(&src_path, &dst_path)
+        .map_err(|e| error!(Span::call_site() => "failed to copy dylib: {e}"))?;
+    Ok(dst_path)
+}
 
 /// Compile a generated crate and return the resolved dylib path.
 pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Result<DylibBuild> {
@@ -210,7 +225,7 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
         ));
     }
 
-    let dylib_path = generated.dylib_path(profile);
+    let dylib_path = generated.dylib_src_path(profile);
     if !dylib_path.is_file() {
         return Err(error!(
             Span::call_site() =>
@@ -218,6 +233,7 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
             dylib_path.display()
         ));
     }
+    let dylib_path = copy_dylib_artifact(generated, profile)?;
 
     debug!("built {}", dylib_path.display());
 

@@ -197,6 +197,7 @@ fn function_impl(config: Config, item: syn::ItemFn) -> Result<TokenStream> {
 }
 
 pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenStream> {
+    debug!("proxy input: {}", input);
     let input: ProxyInput = syn::parse2(input)?;
 
     dylib::load_and_run_entry(
