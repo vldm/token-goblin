@@ -17,7 +17,6 @@ macro_rules! generate_macro {
         }
     };
     ($foo:ident) => {
-        #[allow(unused_macros, reason = "inner idents cannot be accessed outer")]
         #[munch]
         fn $foo(input: TokenStream) -> TokenStream {
             input

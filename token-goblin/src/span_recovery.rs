@@ -5,8 +5,19 @@
 //! This allows same diagnostics levels as regular proc-macro, for charms.
 
 use std::collections::BTreeMap;
+use std::ops::Range;
+use std::str::FromStr as _;
 
 use proc_macro2::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
+
+/// Guest output packet returned from dylib `entry`.
+///
+/// Layout must match `token_goblin_runtime::Output`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Output {
+    pub text: String,
+    pub spans: Vec<Range<usize>>,
+}
 
 /// Span metadata for a token starting at a byte offset in [`SerializedInput::source_text`].
 #[derive(Debug, Clone, Copy)]
@@ -120,6 +131,72 @@ fn delimiter_pair(delimiter: Delimiter) -> (&'static str, &'static str) {
         Delimiter::Brace => ("{ ", "}"),
         Delimiter::Bracket => ("[", "]"),
         Delimiter::None => ("", ""),
+    }
+}
+
+/// Rehydrate guest output into a compiler-backed token stream using the host input span map.
+pub(crate) fn hydrate(source: &SerializedInput, output: &Output) -> TokenStream {
+    let tokens = TokenStream::from_str(&output.text).expect("invalid guest output text");
+    let mut spans = output.spans.iter();
+    let hydrated = hydrate_stream(tokens, &mut spans, source);
+    assert!(spans.next().is_none(), "leftover output spans");
+    hydrated
+}
+
+fn hydrate_stream(
+    tokens: TokenStream,
+    spans: &mut std::slice::Iter<'_, Range<usize>>,
+    source: &SerializedInput,
+) -> TokenStream {
+    tokens
+        .into_iter()
+        .map(|token| hydrate_token(token, spans, source))
+        .collect()
+}
+
+fn hydrate_token(
+    token: TokenTree,
+    spans: &mut std::slice::Iter<'_, Range<usize>>,
+    source: &SerializedInput,
+) -> TokenTree {
+    match token {
+        TokenTree::Group(group) => {
+            let inner = hydrate_stream(group.stream(), spans, source);
+            TokenTree::Group(Group::new(group.delimiter(), inner))
+        }
+        TokenTree::Ident(mut ident) => {
+            ident.set_span(resolve_span(
+                spans.next().expect("missing output span"),
+                source,
+            ));
+            TokenTree::Ident(ident)
+        }
+        TokenTree::Punct(mut punct) => {
+            punct.set_span(resolve_span(
+                spans.next().expect("missing output span"),
+                source,
+            ));
+            TokenTree::Punct(punct)
+        }
+        TokenTree::Literal(mut literal) => {
+            literal.set_span(resolve_span(
+                spans.next().expect("missing output span"),
+                source,
+            ));
+            TokenTree::Literal(literal)
+        }
+    }
+}
+
+fn resolve_span(range: &Range<usize>, source: &SerializedInput) -> Span {
+    if range.is_empty() {
+        Span::call_site()
+    } else {
+        debug!("resolve_span: {range:?}");
+        debug!("source: {:?}", source);
+        source
+            .span_at(range.start)
+            .expect("missing source span for guest output token")
     }
 }
 

@@ -2,5 +2,8 @@
 
 mod wire;
 
-pub use proc_macro2::*;
-pub use wire::parse_input;
+pub mod prelude {
+
+    pub use proc_macro2::*;
+}
+pub use wire::{Output, output, parse_input};

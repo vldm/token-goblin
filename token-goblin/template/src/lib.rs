@@ -1,7 +1,6 @@
 // Prelude
 #[allow(unused)]
-use token_goblin_runtime::*;
-
+use token_goblin_runtime::prelude::*;
 
 mod impls;
 
@@ -13,10 +12,10 @@ pub extern "C" fn meta() -> *const std::ffi::c_char {
 }
 
 #[unsafe(no_mangle)]
-pub fn entry(input: &str) -> String {
-    let input = parse_input(input).expect("invalid serialized input");
+pub fn entry(input: &str) -> token_goblin_runtime::Output {
+    let (input, anchor) = token_goblin_runtime::parse_input(input).expect("invalid serialized input");
 
-       // 1. catch_unwind?
+    // 1. catch_unwind?
     //
     // 2. match first ident as entry branch
     // let (macro_name, input) = split_first(input);
@@ -26,8 +25,8 @@ pub fn entry(input: &str) -> String {
     //  "custom_types"  => { let (c,) = input.split(); impls::custom_types(c.convert()?)},
     //   v              => error!("Goblin proxy error: unexpected macro name: {v}"),
     // }
-    let output = {
+    let tokens = {
         // goblin-stencil: entry
     };
-    output.to_string()
+    token_goblin_runtime::output(tokens, anchor)
 }
