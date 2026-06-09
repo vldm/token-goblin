@@ -2,6 +2,7 @@
 #[allow(unused)]
 use token_goblin_runtime::*;
 
+
 mod impls;
 
 static META: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rustc_meta.out"));
@@ -12,8 +13,10 @@ pub extern "C" fn meta() -> *const std::ffi::c_char {
 }
 
 #[unsafe(no_mangle)]
-pub fn entry(input: TokenStream) -> TokenStream {
-    // 1. catch_unwind?
+pub fn entry(input: &str) -> String {
+    let input = parse_input(input).expect("invalid serialized input");
+
+       // 1. catch_unwind?
     //
     // 2. match first ident as entry branch
     // let (macro_name, input) = split_first(input);
@@ -23,5 +26,8 @@ pub fn entry(input: TokenStream) -> TokenStream {
     //  "custom_types"  => { let (c,) = input.split(); impls::custom_types(c.convert()?)},
     //   v              => error!("Goblin proxy error: unexpected macro name: {v}"),
     // }
-    // goblin-stencil: entry
+    let output = {
+        // goblin-stencil: entry
+    };
+    output.to_string()
 }

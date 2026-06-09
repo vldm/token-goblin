@@ -31,6 +31,9 @@ pub(crate) const PRINT_TIMINGS: bool = cfg!(token_goblin_print_timings);
 /// Internal only feature, not exposed to the user.
 pub(crate) const DEBUG_ENV: bool = false;
 
+/// Internal feature that prevent cache checking for dylib. 
+pub(crate) const NO_CACHE: bool = true;
+
 // ===============================
 // Macros entry points
 // ===============================

@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-proc-macro2 = "1.0"
+proc-macro2 = { version = "1.0", default-features = false, features = ["span-locations"] }

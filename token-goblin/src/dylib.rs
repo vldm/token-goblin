@@ -12,7 +12,7 @@ use std::str::FromStr;
 
 use proc_macro2::{Span, TokenStream};
 
-use crate::{Result, path, rustc_meta};
+use crate::{Result, path, rustc_meta, span_recovery};
 
 /// Cargo build profile for the generated dylib crate.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -152,7 +152,7 @@ fn cargo_command() -> Command {
 /// Check if dylib is exists (and was built with compatible toolchain)
 fn check_cached_dylib(generated: &GeneratedCrate, profile: BuildProfile) -> Option<DylibBuild> {
     let dylib_path = generated.dylib_path(profile);
-    if !dylib_path.is_file() {
+    if crate::NO_CACHE || !dylib_path.is_file() {
         return None;
     }
     if let Err(e) = load_library(&dylib_path) {
@@ -245,7 +245,7 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
     })
 }
 
-type EntryFn = fn(TokenStream) -> TokenStream;
+type EntryFn = fn(&str) -> String;
 type MetaFn = unsafe extern "C" fn() -> *const c_char;
 
 fn read_dylib_meta(library: &libloading::Library, dylib_path: &Path) -> Result<&'static str> {
@@ -299,15 +299,16 @@ pub fn load_library(dylib_path: &Path) -> Result<libloading::Library> {
 /// Load a dylib, invoke `entry`, and return the resulting token stream.
 pub fn load_and_run_entry(dylib_path: &Path, input: TokenStream) -> Result<TokenStream> {
     let library = load_library(dylib_path)?;
+    let serialized_input = span_recovery::SerializedInput::serialize(&input);
 
     /// Safety: we know the type of entrypoint.
     let entry: libloading::Symbol<EntryFn> = unsafe { library.get(b"entry") }
         .map_err(|e| error!(Span::call_site() => "failed to resolve `entry` symbol: {e}"))?;
 
-    let res = entry(input);
+    let res = entry(&serialized_input.source_text);
     debug!("result: {}", res);
 
-    Ok(res)
+    Ok(TokenStream::from_str(&res)?)
 }
 
 #[cfg(test)]

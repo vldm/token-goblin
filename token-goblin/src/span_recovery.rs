@@ -6,39 +6,39 @@
 
 use std::collections::BTreeMap;
 
-use proc_macro2::{Delimiter, Group, Ident, Literal, Punct, Spacing, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
 
 /// Span metadata for a token starting at a byte offset in [`SerializedInput::source_text`].
 #[derive(Debug, Clone, Copy)]
-pub struct SpanEntry {
+pub(crate) struct SpanEntry {
     pub end: usize,
-    pub span: proc_macro2::Span,
+    pub span: Span,
 }
 
 /// Canonical token text plus a host-local span table keyed by token start offset.
 #[derive(Debug, Clone, Default)]
-pub struct SerializedInput {
+pub(crate) struct SerializedInput {
     pub source_text: String,
     pub span_map: BTreeMap<usize, SpanEntry>,
 }
 
 impl SerializedInput {
     /// Serialize `tokens` into canonical source text and a byte-offset span map.
-    pub fn serialize(tokens: &TokenStream) -> Self {
+    pub(crate) fn serialize(tokens: &TokenStream) -> Self {
         let mut input = Self::default();
         input.write_stream(tokens);
         input
     }
 
     /// Look up the span for the token whose byte range contains `offset`.
-    pub fn span_at(&self, offset: usize) -> Option<proc_macro2::Span> {
+    pub(crate) fn span_at(&self, offset: usize) -> Option<Span> {
         self.entry_containing_offset(offset)
             .map(|(_, entry)| entry.span)
     }
 
     /// Return the full token text for the token whose byte range contains `offset`.
     #[cfg(test)]
-    pub fn token_text_at(&self, offset: usize) -> Option<&str> {
+    fn token_text_at(&self, offset: usize) -> Option<&str> {
         let (start, entry) = self.entry_containing_offset(offset)?;
         Some(&self.source_text[start..entry.end])
     }
@@ -104,7 +104,7 @@ impl SerializedInput {
         }
     }
 
-    fn write_span(&mut self, span: proc_macro2::Span, text: &str) {
+    fn write_span(&mut self, span: Span, text: &str) {
         let start = self.source_text.len();
         self.source_text.push_str(text);
         let end = self.source_text.len();
@@ -112,11 +112,6 @@ impl SerializedInput {
             self.span_map.insert(start, SpanEntry { end, span });
         }
     }
-}
-
-/// Serialize `tokens` into canonical source text and a byte-offset span map.
-pub fn serialize(tokens: &TokenStream) -> SerializedInput {
-    SerializedInput::serialize(tokens)
 }
 
 fn delimiter_pair(delimiter: Delimiter) -> (&'static str, &'static str) {
@@ -132,7 +127,7 @@ fn delimiter_pair(delimiter: Delimiter) -> (&'static str, &'static str) {
 mod tests {
     use std::str::FromStr as _;
 
-    use proc_macro2::{Ident, Span, TokenStream, TokenTree};
+    use proc_macro2::{Ident, Span, TokenTree};
 
     use super::*;
 
