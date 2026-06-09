@@ -16,7 +16,12 @@ That's why we:
 Since process of `charm` expansion and declaration is separated in time, we need to ensure that macro declaration and caller expect same macro.
 We add source hash into macro name, and include it into proxy macro call.
 
-## Visibiltity hack
+## Cross lib boundary
+Dyload also limits us in interface that we can provide to the definition crate.
+1. `proc-macro` is not available in definition crate (since proc-macro uses tls to store route to host runtime)
+2. Sending `proc-macro2::fallback::TokenStream` directly is possible, but it will lose some diagnostics information, related to spans location (also caused by tls usage in proc-macro2::fallback)
+
+# Visibiltity hack
 
 Historically `macro_rules` have it's own namespace. Therefore exporting them 
 require `#[macro_export]` attribute.

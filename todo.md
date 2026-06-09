@@ -23,3 +23,4 @@ The mix of `crabtime` and `inline-proc`
 - [ ] Support workspace dependencies.
 - [ ] map cargo errors to span information.
 - [ ] Support module resolution ?
+- [ ] Add from source_text macro (without spans, but that allow saving original text)

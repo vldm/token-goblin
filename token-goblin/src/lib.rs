@@ -12,6 +12,7 @@ mod macro_impl;
 mod metadata;
 mod path;
 mod rustc_meta;
+mod span_recovery;
 mod template;
 use errors::MapCompileError;
 
