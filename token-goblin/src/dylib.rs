@@ -17,10 +17,10 @@ use crate::{Result, path, rustc_meta};
 /// Cargo build profile for the generated dylib crate.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BuildProfile {
-    #[cfg_attr(feature = "use-debug-profile", default)]
+    #[cfg_attr(not(feature = "use_release_profile"), default)]
     Debug,
 
-    #[cfg_attr(not(feature = "use-debug-profile"), default)]
+    #[cfg_attr(feature = "use_release_profile", default)]
     Release,
 }
 impl FromStr for BuildProfile {

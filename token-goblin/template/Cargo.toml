@@ -13,3 +13,14 @@ crate-type = ["dylib"]
 token-goblin-runtime = "0.1"
 
 # goblin-stencil: dependencies
+
+[profile.dev]
+opt-level = 0
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+lto = false
+
+[profile.release]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+lto = false

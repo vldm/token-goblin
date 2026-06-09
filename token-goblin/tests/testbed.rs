@@ -1,13 +1,13 @@
 use token_goblin::*;
 
 #[munch]
-fn testbed(input: TokenStream) -> TokenStream {
+fn some_macro(input: TokenStream) -> TokenStream {
     input
 }
 
-macro_rules! testbed2 {
+macro_rules! generate_macro {
     (inner) => {
-        testbed2!(some_inner);
+        generate_macro!(some_inner);
     };
 
     (pub_inner) => {
@@ -25,10 +25,11 @@ macro_rules! testbed2 {
     };
 }
 
-testbed2!(foo);
+generate_macro!(foo);
 
-testbed2!(inner);
-testbed2!(pub_inner);
+generate_macro!(baz);
+generate_macro!(inner);
+generate_macro!(pub_inner);
 
 mod private {
     use super::*;
@@ -40,11 +41,11 @@ mod private {
     // testbed2!(pub_inner);
 
     // Cannot define macro with same name publicly available.
-    testbed2!(inner);
+    generate_macro!(inner);
 
     #[test]
     fn test_full() {
-        let x = bar!(testbed!(foo!(12)));
+        let x = bar!(some_macro!(foo!(12)));
         assert_eq!(x, 12);
     }
 }

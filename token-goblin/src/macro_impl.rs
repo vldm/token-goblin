@@ -145,7 +145,7 @@ impl Default for Config {
         Self {
             cache: true,
             split_cache: false,
-            profile: BuildProfile::Release,
+            profile: BuildProfile::default(),
             debug: None,
         }
     }
@@ -314,6 +314,7 @@ fn build_and_compile_crate(
     let out = quote! {
         #macro_glob
         #[doc(hidden)]
+        #[allow(unused)]
         macro_rules! #macro_name {
             ($($args:tt)*) => {
                 #crate_proxy{#proxy_input, $($args)*}
