@@ -75,3 +75,17 @@ fn test_short() {
     let x = foo!(12);
     assert_eq!(x, 12);
 }
+
+#[munch]
+mod module {
+
+    pub fn module_macro(input: TokenStream) -> TokenStream {
+        input
+    }
+}
+
+#[test]
+fn test_module() {
+    let x = module::module_macro!(12);
+    assert_eq!(x, 12);
+}

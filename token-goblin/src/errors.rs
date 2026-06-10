@@ -1,6 +1,5 @@
-pub type AnyError = Box<dyn std::error::Error + Send + Sync + 'static>;
-
 // Force throwing error only with span.
+#[allow(unused)]
 macro_rules! bail {
     ($($err:tt)*) => {
         return Err(error!($($err)*))

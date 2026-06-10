@@ -20,7 +20,10 @@ type TomlTable = toml::map::Map<String, toml::Value>;
 #[derive(Debug)]
 pub enum ValueOrWorkspace {
     Value(toml::Value),
-    Workspace { extra: TomlTable },
+    #[allow(unused)]
+    Workspace {
+        extra: TomlTable,
+    },
 }
 impl ValueOrWorkspace {
     fn from_value(value: toml::Value) -> Result<Self> {

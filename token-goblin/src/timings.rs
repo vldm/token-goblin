@@ -9,8 +9,8 @@
 
 use std::cell::RefCell;
 
-/// Collector of timings.
 thread_local! {
+    /// Collector of timings.
     static TIMING: RefCell<Vec<(&'static str, std::time::Duration)>> = const { RefCell::new(Vec::new())};
 }
 fn take_timings() -> Vec<(&'static str, std::time::Duration)> {

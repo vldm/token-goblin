@@ -1,8 +1,8 @@
-use std::{path::PathBuf, str::FromStr};
+use std::str::FromStr;
 
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, format_ident, quote, quote_spanned};
-use syn::{Token, spanned::Spanned};
+use syn::spanned::Spanned;
 
 use crate::{
     Result,
@@ -167,23 +167,13 @@ pub fn munch_impl(args: TokenStream, item: TokenStream) -> Result<TokenStream> {
 }
 
 fn module_impl(config: Config, item: syn::ItemMod) -> Result<TokenStream> {
-    let name = item.ident.clone();
-    let context = TemplateContext::from_mod(item)?;
-    build_and_compile_crate(&name, &context, config)
+    let context = timed!("template_context", { TemplateContext::from_mod(item)? });
+    build_and_compile_crate(&context, config)
 }
 
 fn function_impl(config: Config, item: syn::ItemFn) -> Result<TokenStream> {
-    debug!(
-        "function attrs: {:?}",
-        item.attrs
-            .iter()
-            .map(|attr| format!("{}", attr.to_token_stream()))
-            .collect::<Vec<_>>()
-    );
-    let name = item.sig.ident.clone();
-
     let context = timed!("template_context", { TemplateContext::from_fn(item)? });
-    build_and_compile_crate(&name, &context, config)
+    build_and_compile_crate(&context, config)
 }
 
 pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenStream> {
@@ -197,44 +187,59 @@ pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenS
 }
 
 impl TemplateContext {
-    fn from_fn(mut item: syn::ItemFn) -> Result<Self> {
+    fn from_fn(item: syn::ItemFn) -> Result<Self> {
         let name = &item.sig.ident;
         let package_name = format!("token-goblin-{}", name.to_string().replace('_', "-"));
 
-        let visibility = std::mem::replace(
-            &mut item.vis,
-            syn::Visibility::Public(syn::token::Pub::default()),
-        );
+        let generated_content = {
+            let mut item2 = item.clone();
+            item2.vis = syn::Visibility::Public(syn::token::Pub::default());
+            item2.to_token_stream()
+        };
 
         let context = TemplateContext {
             package_name: package_name.clone(),
             package_extra: String::new(),
             source_metadata: metadata::load_dependencies()?,
-            entry: format!("impls::{name}(input)"),
-            impls: quote! { #item }.to_string(),
+            generated_content,
+            entries: vec![item],
 
-            visibility,
+            mod_name: None,
         };
 
         Ok(context)
     }
 
-    fn from_mod(mut item: syn::ItemMod) -> Result<Self> {
-        let name = &item.ident;
+    // Only exportable if pub or pub(crate)/pub(super)
+    fn is_exportable(vis: &syn::Visibility) -> bool {
+        match vis {
+            syn::Visibility::Public(_) => true,
+            syn::Visibility::Restricted(restricted) => {
+                restricted.path.segments.len() == 1
+                    && (restricted.path.segments[0].ident == "crate"
+                        || restricted.path.segments[0].ident == "super")
+            }
+            syn::Visibility::Inherited => false,
+        }
+    }
+
+    fn from_mod(mod_item: syn::ItemMod) -> Result<Self> {
+        let name = &mod_item.ident;
         let package_name = format!("token-goblin-{}", name.to_string().replace('_', "-"));
 
-        /// rebuild all sub items to public
-        let Some((b, mut content)) = item.content else {
-            return Err(error!(item.span() => "Expected module content"));
+        let Some((b, content)) = mod_item.content else {
+            return Err(error!(mod_item.span() => "Expected module content"));
         };
 
         let mut entries = Vec::new();
 
-        for item in &mut content {
+        for item in &content {
             match item {
+                // Only public functions are considered as entry points to token-goblin.
                 syn::Item::Fn(item) => {
-                    item.vis = syn::Visibility::Public(syn::token::Pub::default());
-                    entries.push(quote! { #item });
+                    if Self::is_exportable(&item.vis) {
+                        entries.push(item.clone());
+                    }
                 }
                 _ => {
                     return Err(error!(item.span() => "Expected function"));
@@ -245,19 +250,14 @@ impl TemplateContext {
         if entries.is_empty() {
             return Err(error!(b.span.join() => "Expected at least one function"));
         }
-
-        todo!("Convert items to match impls block");
-
         Ok(TemplateContext {
             package_name: package_name.clone(),
             package_extra: String::new(),
             source_metadata: metadata::load_dependencies()?,
-            entry: format!("impls::{name}(input)"),
-            impls: quote! { #(#content)* }.to_string(),
+            entries,
+            generated_content: quote! { #(#content)* },
 
-            // TODO: Add support of multiple visibilities?
-            // Per fn
-            visibility: item.vis.clone(),
+            mod_name: Some((mod_item.vis.clone(), name.clone())),
         })
     }
 }
@@ -265,11 +265,10 @@ impl TemplateContext {
 /// Build crate from template, and compile it to dylib.
 /// Use name to calculate output path, and include source hash if needed.
 fn build_and_compile_crate(
-    name: &syn::Ident,
     template_context: &TemplateContext,
     config: Config,
 ) -> Result<TokenStream> {
-    let (output_dir, stable) = path::calculate_generated_path(name);
+    let (output_dir, stable) = path::calculate_generated_path(template_context.name_span());
 
     debug!("path_is_stable: {}, config.cache: {}", stable, config.cache);
 
@@ -294,40 +293,58 @@ fn build_and_compile_crate(
         dylib_path: syn::LitStr::new(&dylib.dylib_path.display().to_string(), Span::call_site()),
     };
 
-    let mod_name = name;
+    let mod_name = template_context
+        .mod_name
+        .as_ref()
+        .map_or_else(|| format_ident!("global"), |(_, name)| name.clone());
 
     // Using mixed site to resolve `$crate`.
     let crate_proxy = quote_spanned! { Span::mixed_site() =>
         $crate::proxy!
     };
 
-    // for each macro
-    let visibility = template_context.visibility.clone();
-    let macro_glob = if matches!(visibility, syn::Visibility::Public(_)) {
-        quote! {#[macro_export]}
+    let mut out = vec![];
+    for entry in &template_context.entries {
+        let visibility = &entry.vis;
+
+        // Global macro can be only in pub mods, or if fn without mod.
+        let macro_glob = if matches!(visibility, syn::Visibility::Public(_)) {
+            quote! {#[macro_export]}
+        } else {
+            quote! {}
+        };
+
+        let name = &entry.sig.ident;
+        let postfix = postfix_hash(name.span());
+        let mod_name_str = mod_name.to_string();
+        let macro_name = format_ident!("{}_{}_{}", mod_name_str, name, postfix);
+        out.push(quote! {
+            #macro_glob
+            #[doc(hidden)]
+            #[allow(unused)]
+            macro_rules! #macro_name {
+                ($($args:tt)*) => {
+                    #crate_proxy{#proxy_input, $($args)*}
+                };
+            }
+
+            #visibility use #macro_name as #name;
+        });
+    }
+
+    let out = if let Some((vis, _)) = &template_context.mod_name {
+        quote! {
+           #vis mod #mod_name {
+               #(#out)*
+        } }
     } else {
-        quote! {}
-    };
-
-    let postfix = postfix_hash(name.span());
-    let macro_name = format_ident!("{}_{}_{}", mod_name, name, postfix);
-    let out = quote! {
-        #macro_glob
-        #[doc(hidden)]
-        #[allow(unused)]
-        macro_rules! #macro_name {
-            ($($args:tt)*) => {
-                #crate_proxy{#proxy_input, $($args)*}
-            };
-        }
-
-        #visibility use #macro_name as #name;
+        quote! { #(#out)* }
     };
 
     debug!("out: {}", out);
     if crate::DEBUG_ENV {
         debug!("env vars: {}", get_env_vars());
-        let span: proc_macro::Span = name.span().unwrap();
+        let span: proc_macro::Span = template_context.name_span().unwrap();
         debug!(
             "span_source_file: {}, {:?}, line: {}",
             span.file(),

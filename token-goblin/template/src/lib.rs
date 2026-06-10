@@ -27,7 +27,7 @@ pub fn entry(input: &str) -> token_goblin_runtime::Output {
     //   v              => error!("Goblin proxy error: unexpected macro name: {v}"),
     // }
     let tokens = {
-        // goblin-stencil: entry
+        // goblin-stencil: entries
     };
     token_goblin_runtime::output(tokens, anchor)
 }

@@ -72,12 +72,12 @@ pub struct GeneratedCrate {
     pub source_hash: String,
 
     /// Lock file path used to prevent concurrent builds of the same crate.
-    pub lock_file: path::FsLockGuard,
+    pub _lock_file: path::FsLockGuard,
 }
 
 impl GeneratedCrate {
     pub fn new(
-        mut source_dir: PathBuf,
+        source_dir: PathBuf,
         per_project_cache: bool,
         crate_name: impl Into<String>,
         source_hash: impl Into<String>,
@@ -91,7 +91,7 @@ impl GeneratedCrate {
             build_dir,
             crate_name: crate_name.into(),
             source_hash,
-            lock_file,
+            _lock_file: lock_file,
         }
     }
 
@@ -118,8 +118,6 @@ impl GeneratedCrate {
 #[derive(Clone, Debug)]
 pub struct DylibBuild {
     pub dylib_path: PathBuf,
-    pub profile: BuildProfile,
-    pub crate_name: String,
 }
 
 /// Normalize a Cargo package name to the library artifact stem (`-` → `_`).
@@ -159,11 +157,7 @@ fn check_cached_dylib(generated: &GeneratedCrate, profile: BuildProfile) -> Opti
         debug!("cached dylib is not valid: {e}");
         return None;
     }
-    Some(DylibBuild {
-        dylib_path,
-        profile,
-        crate_name: generated.crate_name.clone(),
-    })
+    Some(DylibBuild { dylib_path })
 }
 // Copy dylib artifact to versioned path
 fn copy_dylib_artifact(generated: &GeneratedCrate, profile: BuildProfile) -> Result<PathBuf> {
@@ -251,11 +245,7 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
 
     debug!("built {}", dylib_path.display());
 
-    Ok(DylibBuild {
-        dylib_path,
-        profile,
-        crate_name: generated.crate_name.clone(),
-    })
+    Ok(DylibBuild { dylib_path })
 }
 
 type EntryFn = fn(&str) -> span_recovery::Output;
@@ -315,7 +305,7 @@ pub fn load_and_run_entry(dylib_path: &Path, input: TokenStream) -> Result<Token
     let library = load_library(dylib_path)?;
     let serialized_input = span_recovery::SerializedInput::serialize(&input);
 
-    /// Safety: we know the type of entrypoint.
+    // Safety: we know the type of entrypoint.
     let entry: libloading::Symbol<EntryFn> = unsafe { library.get(b"entry") }
         .map_err(|e| error!(Span::call_site() => "failed to resolve `entry` symbol: {e}"))?;
 

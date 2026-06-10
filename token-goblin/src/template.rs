@@ -8,6 +8,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use proc_macro2::TokenStream;
+use quote::quote;
+
 use crate::{
     Result,
     dylib::GeneratedCrate,
@@ -22,10 +25,51 @@ pub struct TemplateContext {
     pub package_name: String,
     pub package_extra: String,
     pub source_metadata: Metadata,
-    pub entry: String,
-    pub impls: String,
+    // Entries of generated module.
+    pub entries: Vec<syn::ItemFn>,
 
-    pub visibility: syn::Visibility,
+    // Content of generated module.
+    pub generated_content: TokenStream,
+
+    pub mod_name: Option<(syn::Visibility, syn::Ident)>,
+}
+impl TemplateContext {
+    pub fn name_span(&self) -> proc_macro2::Span {
+        if let Some((_, name)) = &self.mod_name {
+            name.span()
+        } else {
+            self.entries[0].sig.ident.span()
+        }
+    }
+    pub fn entries(&self) -> String {
+        // "match entry {"
+        // "entry_lit => entry_impl(input),
+        // TODO: Replace by compile_error!
+        //  _ => panic!("Unexpected entry: {}", entry_lit),
+        // "}"
+
+        let entries = self
+            .entries
+            .iter()
+            .map(|entry| {
+                let name = &entry.sig.ident;
+                quote! {
+                    #name => {
+                        impls::#name(input)
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+        quote! {
+           match () {
+               #(#entries)*
+           }
+        }
+        .to_string()
+    }
+    pub fn content(&self) -> String {
+        self.generated_content.to_string()
+    }
 }
 // custom because syn::Visibility doesn't implement Debug
 impl Debug for TemplateContext {
@@ -49,6 +93,7 @@ pub fn template_root() -> PathBuf {
 /// Used to ensure that our macro declaration and caller code expect to call the same macro.
 pub fn source_hash(context: &TemplateContext) -> Result<String> {
     let dependencies = render_dependencies(&context.source_metadata)?;
+
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"package_name\0");
     hasher.update(context.package_name.as_bytes());
@@ -57,9 +102,9 @@ pub fn source_hash(context: &TemplateContext) -> Result<String> {
     hasher.update(b"\0dependencies\0");
     hasher.update(dependencies.as_bytes());
     hasher.update(b"\0entry\0");
-    hasher.update(context.entry.as_bytes());
+    hasher.update(context.entries().as_bytes());
     hasher.update(b"\0impls\0");
-    hasher.update(context.impls.as_bytes());
+    hasher.update(context.content().as_bytes());
     Ok(hasher.finalize().to_hex().to_string())
 }
 
@@ -214,8 +259,8 @@ fn render_file(path: &Path, context: &TemplateContext) -> Result<String> {
                 push_fragment(&mut out, &render_dependencies(&context.source_metadata)?);
             }
 
-            "entry" => push_fragment(&mut out, &context.entry),
-            "impls" => push_fragment(&mut out, &context.impls),
+            "entries" => push_fragment(&mut out, &context.entries()),
+            "content" => push_fragment(&mut out, &context.content()),
             other => {
                 return Err(error!(
                     "unknown stencil marker `{other}` in {}",

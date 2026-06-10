@@ -9,6 +9,6 @@ edition = "2024"
 crate-type = ["dylib"]
 
 [dependencies]
-token-goblin-runtime = { path = "../../../runtime" } # "0.1"
+token-goblin-runtime = "0.1"
 
 # {{dependencies}}

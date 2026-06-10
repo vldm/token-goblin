@@ -9,15 +9,6 @@ use crate::Result;
 
 pub(crate) const OUT_DIR: &str = env!("OUT_DIR");
 
-/// Use `CARGO_MANIFEST_DIR` to get path to crate root.
-/// It might be unset if custom build system is used.
-pub fn crate_root() -> Result<PathBuf> {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .map_err(|_| error!(Span::call_site() => "CARGO_MANIFEST_DIR is not set"))?;
-    let manifest_dir = PathBuf::from(&manifest_dir);
-    Ok(manifest_dir)
-}
-
 /// Cache build directory
 /// Single common directory for all macros:
 /// - This avoid rebuilding of same crates like `syn`, `proc-macro2` for each macro call.
@@ -76,9 +67,8 @@ pub fn search_for_parent_manifest<U>(
 ///
 /// Format of path is:
 /// `{OUT_DIR}/generated/{crate_name}_{crate_version}/{path_to_macro_definition}_{fn_name}_{line}_{column}`
-pub fn calculate_generated_path(ident: &syn::Ident) -> (PathBuf, bool) {
-    let fn_name = ident.to_string();
-    let span: proc_macro::Span = ident.span().unwrap();
+pub fn calculate_generated_path(ident: proc_macro2::Span) -> (PathBuf, bool) {
+    let span: proc_macro::Span = ident.unwrap();
 
     let mut stable = true;
     let file = span.local_file().map_or_else(

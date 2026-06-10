@@ -1,4 +1,4 @@
-#![allow(unused)]
+// #![allow(unused)]
 use proc_macro::TokenStream;
 #[macro_use]
 mod errors;
@@ -31,7 +31,7 @@ pub(crate) const PRINT_TIMINGS: bool = cfg!(token_goblin_print_timings);
 /// Internal only feature, not exposed to the user.
 pub(crate) const DEBUG_ENV: bool = false;
 
-/// Internal feature that prevent cache checking for dylib. 
+/// Internal feature that prevent cache checking for dylib.
 pub(crate) const NO_CACHE: bool = true;
 
 // ===============================
@@ -55,7 +55,11 @@ pub fn proxy(input: TokenStream) -> TokenStream {
 /// ```
 /// #[token_goblin::munch]
 /// mod my_module {
-///   // entry fn
+///   // entry fn should be public
+///   pub fn inner_function(_: TokenStream) -> TokenStream {
+///     //..
+///     # todo!()
+///   }
 /// }
 /// ```
 /// or for function:
@@ -83,7 +87,7 @@ pub fn munch(attr: TokenStream, item: TokenStream) -> TokenStream {
     })
 }
 
-#[proc_macro_derive(Snif)]
+#[proc_macro_derive(Snif, attributes(snif))]
 pub fn snif(input: TokenStream) -> TokenStream {
     timed!("snif", {
         // TODO
