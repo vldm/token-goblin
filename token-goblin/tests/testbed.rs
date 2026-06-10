@@ -1,5 +1,6 @@
 use token_goblin::*;
 
+// generate some macro
 #[munch]
 fn some_macro(input: TokenStream) -> TokenStream {
     input
@@ -24,27 +25,47 @@ macro_rules! generate_macro {
     };
 }
 
+// Macro can be generated.
 generate_macro!(foo);
-
 generate_macro!(baz);
-generate_macro!(inner);
-generate_macro!(pub_inner);
+
+#[allow(
+    unused_imports,
+    reason = "some_inner ident is not available outside of generate_macro! macro"
+)]
+mod inner {
+    use super::*;
+    generate_macro!(inner);
+    generate_macro!(pub_inner);
+}
 
 mod private {
-    use super::*;
+    use super::{baz, munch, some_macro};
     #[munch]
     fn bar(input: TokenStream) -> TokenStream {
         input
     }
 
-    // testbed2!(pub_inner);
+    // Allow to define macro with same name again.
+    // but only if it's private
+    #[allow(unused_imports)]
+    mod scope {
+        use super::*;
+        generate_macro!(foo);
+    }
+    // Public macro can also be defined multiple times
+    // If their "source spans" are different.
+    #[munch]
+    pub fn foo(input: TokenStream) -> TokenStream {
+        input
+    }
 
     // Cannot define macro with same name publicly available.
-    generate_macro!(inner);
+    // generate_macro!(pub_inner);
 
     #[test]
     fn test_full() {
-        let x = bar!(some_macro!(foo!(12)));
+        let x = bar!(some_macro!(baz!(foo!(12))));
         assert_eq!(x, 12);
     }
 }
