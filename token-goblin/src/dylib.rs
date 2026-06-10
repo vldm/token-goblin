@@ -188,6 +188,15 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
         return Ok(dylib);
     }
 
+    let rustc = env!("TOKEN_GOBLIN_RUSTC");
+    let rustc_version = Command::new(rustc).arg("-vV").output().map_err(|e| {
+        error!(
+            Span::call_site() =>
+            "failed to run `rustc -vV` for {}: {e}",
+            rustc
+        )
+    })?;
+
     let mut cmd = cargo_command();
     cmd.arg("build")
         .arg("--manifest-path")
@@ -195,7 +204,11 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
         .arg("--target-dir")
         .arg(generated.target_dir())
         .env("CARGO_BUILD_BUILD_DIR", &generated.build_dir)
-        .env("RUSTC", env!("TOKEN_GOBLIN_RUSTC"));
+        .env("RUSTC", rustc)
+        .env(
+            "TOKEN_GOBLIN_RUSTC_META",
+            String::from_utf8_lossy(&rustc_version.stdout).as_ref(),
+        );
 
     if let Some(flag) = profile.cargo_release_flag() {
         cmd.arg(flag);

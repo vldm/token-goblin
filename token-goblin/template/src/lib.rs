@@ -4,7 +4,7 @@ use token_goblin_runtime::prelude::*;
 
 mod impls;
 
-static META: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/rustc_meta.out"));
+static META: &[u8] = concat!(env!("TOKEN_GOBLIN_RUSTC_META"), "\0").as_bytes();
 
 #[unsafe(no_mangle)]
 pub extern "C" fn meta() -> *const std::ffi::c_char {
@@ -13,7 +13,8 @@ pub extern "C" fn meta() -> *const std::ffi::c_char {
 
 #[unsafe(no_mangle)]
 pub fn entry(input: &str) -> token_goblin_runtime::Output {
-    let (input, anchor) = token_goblin_runtime::parse_input(input).expect("invalid serialized input");
+    let (input, anchor) =
+        token_goblin_runtime::parse_input(input).expect("invalid serialized input");
 
     // 1. catch_unwind?
     //
