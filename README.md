@@ -1,6 +1,6 @@
 # Token Goblin — munches your tokens, spits out macros
 
-`token-goblin` is a proc-macro library for defining proc-macro-like transformations inline, directly inside your crate.
+`token-goblin` is a proc-macro library for defining proc-macro-like transformations inline, directly inside your crate, without separate proc-macro crate.
 
 It is inspired by crates like `crabtime` and `inline-proc`, but aims to provide a more polished, flexible, and ergonomic API.
 

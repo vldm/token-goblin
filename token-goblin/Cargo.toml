@@ -22,8 +22,8 @@ trybuild = "1.0"
 proc-macro2 = "1.0"
 token-goblin-runtime = { path = "../runtime" }
 
-
 [features]
-default = [] # ["use_release_profile"]
-use_release_profile = [
-] # Use release profile by default for token-goblin `charms`
+default = []
+
+# Use release profile by default for token-goblin `charms`
+use_release_profile = []
