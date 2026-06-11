@@ -42,27 +42,23 @@ impl TemplateContext {
         }
     }
     pub fn entries(&self) -> String {
-        // "match entry {"
-        // "entry_lit => entry_impl(input),
-        // TODO: Replace by compile_error!
-        //  _ => panic!("Unexpected entry: {}", entry_lit),
-        // "}"
-
         let entries = self
             .entries
             .iter()
             .map(|entry| {
                 let name = &entry.sig.ident;
+                let lit = syn::LitStr::new(name.to_string().as_str(), name.span());
                 quote! {
-                    #name => {
+                    #lit => {
                         impls::#name(input)
                     }
                 }
             })
             .collect::<Vec<_>>();
         quote! {
-           match () {
+           match macro_name {
                #(#entries)*
+               _ => panic!("BUG: Unexpected macro name: {macro_name}"),
            }
         }
         .to_string()

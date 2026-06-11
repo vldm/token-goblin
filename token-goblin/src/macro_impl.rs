@@ -13,6 +13,7 @@ use crate::{
 
 pub struct ProxyArgs {
     pub dylib_path: syn::LitStr,
+    pub macro_name: syn::Ident,
 }
 impl syn::parse::Parse for ProxyArgs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
@@ -20,7 +21,12 @@ impl syn::parse::Parse for ProxyArgs {
         syn::braced!(content in input);
 
         let dylib_path = content.parse()?;
-        Ok(Self { dylib_path })
+        content.parse::<syn::Token![,]>()?;
+        let macro_name = content.parse()?;
+        Ok(Self {
+            dylib_path,
+            macro_name,
+        })
     }
 }
 impl ToTokens for ProxyArgs {
@@ -28,6 +34,8 @@ impl ToTokens for ProxyArgs {
         let brace = syn::token::Brace::default();
         brace.surround(tokens, |tokens| {
             tokens.extend(self.dylib_path.to_token_stream());
+            tokens.extend(syn::token::Comma::default().to_token_stream());
+            tokens.extend(self.macro_name.to_token_stream());
         });
     }
 }
@@ -182,6 +190,7 @@ pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenS
 
     dylib::load_and_run_entry(
         std::path::Path::new(&input.proxy_args.dylib_path.value()),
+        &input.proxy_args.macro_name.to_string(),
         input.tokens,
     )
 }
@@ -234,16 +243,11 @@ impl TemplateContext {
         let mut entries = Vec::new();
 
         for item in &content {
-            match item {
+            if let syn::Item::Fn(item) = item
+                && Self::is_exportable(&item.vis)
+            {
                 // Only public functions are considered as entry points to token-goblin.
-                syn::Item::Fn(item) => {
-                    if Self::is_exportable(&item.vis) {
-                        entries.push(item.clone());
-                    }
-                }
-                _ => {
-                    return Err(error!(item.span() => "Expected function"));
-                }
+                entries.push(item.clone());
             }
         }
 
@@ -289,10 +293,6 @@ fn build_and_compile_crate(
 
     debug!("generated crate: {}", generated.source_dir.display());
 
-    let proxy_input = ProxyArgs {
-        dylib_path: syn::LitStr::new(&dylib.dylib_path.display().to_string(), Span::call_site()),
-    };
-
     let mod_name = template_context
         .mod_name
         .as_ref()
@@ -305,6 +305,13 @@ fn build_and_compile_crate(
 
     let mut out = vec![];
     for entry in &template_context.entries {
+        let proxy_input = ProxyArgs {
+            dylib_path: syn::LitStr::new(
+                &dylib.dylib_path.display().to_string(),
+                Span::call_site(),
+            ),
+            macro_name: entry.sig.ident.clone(),
+        };
         let visibility = &entry.vis;
 
         // Global macro can be only in pub mods, or if fn without mod.

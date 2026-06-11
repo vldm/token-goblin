@@ -12,7 +12,7 @@ pub extern "C" fn meta() -> *const std::ffi::c_char {
 }
 
 #[unsafe(no_mangle)]
-pub fn entry(input: &str) -> token_goblin_runtime::Output {
+pub fn entry(macro_name: &str, input: &str) -> token_goblin_runtime::Output {
     let (input, anchor) =
         token_goblin_runtime::parse_input(input).expect("invalid serialized input");
 

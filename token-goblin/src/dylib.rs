@@ -248,7 +248,7 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
     Ok(DylibBuild { dylib_path })
 }
 
-type EntryFn = fn(&str) -> span_recovery::Output;
+type EntryFn = fn(&str, &str) -> span_recovery::Output;
 type MetaFn = unsafe extern "C" fn() -> *const c_char;
 
 fn read_dylib_meta(library: &libloading::Library, dylib_path: &Path) -> Result<&'static str> {
@@ -301,7 +301,11 @@ pub fn load_library(dylib_path: &Path) -> Result<libloading::Library> {
 
 /// Load a dylib, invoke `entry`, and return the resulting token stream.
 #[allow(clippy::needless_pass_by_value, reason = "consume token stream")]
-pub fn load_and_run_entry(dylib_path: &Path, input: TokenStream) -> Result<TokenStream> {
+pub fn load_and_run_entry(
+    dylib_path: &Path,
+    macro_name: &str,
+    input: TokenStream,
+) -> Result<TokenStream> {
     let library = load_library(dylib_path)?;
     let serialized_input = span_recovery::SerializedInput::serialize(&input);
 
@@ -309,9 +313,14 @@ pub fn load_and_run_entry(dylib_path: &Path, input: TokenStream) -> Result<Token
     let entry: libloading::Symbol<EntryFn> = unsafe { library.get(b"entry") }
         .map_err(|e| error!(Span::call_site() => "failed to resolve `entry` symbol: {e}"))?;
 
-    debug!("charm input: {}", serialized_input.source_text);
-    let guest = entry(&serialized_input.source_text);
-    debug!("charm output: {}", guest.text);
+    let print_input = if serialized_input.source_text.is_empty() {
+        "<empty>"
+    } else {
+        &serialized_input.source_text
+    };
+    debug!("charm [{macro_name}] input: {print_input}");
+    let guest = entry(macro_name, &serialized_input.source_text);
+    debug!("output: {}", guest.text);
 
     let res = span_recovery::hydrate(&serialized_input, &guest);
 

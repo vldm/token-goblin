@@ -79,13 +79,20 @@ fn test_short() {
 #[munch]
 mod module {
 
+    use std::str::FromStr;
     pub fn module_macro(input: TokenStream) -> TokenStream {
         input
+    }
+
+    pub fn module_macro_embed(_: TokenStream) -> TokenStream {
+        TokenStream::from_str("12"g).unwrap()
     }
 }
 
 #[test]
 fn test_module() {
     let x = module::module_macro!(12);
+    let y = module::module_macro_embed!();
     assert_eq!(x, 12);
+    assert_eq!(y, x);
 }
