@@ -59,7 +59,6 @@ impl Metadata {
                 .iter()
                 .filter(|(name, _)| *name != "token-goblin-runtime")
                 .map(|(name, value)| {
-                    dbg!(name, value);
                     Dependency::new(name.clone(), manifest_path.to_path_buf(), value.clone())
                 })
                 .collect::<Result<Vec<Dependency>>>()?,
@@ -92,10 +91,7 @@ impl Metadata {
     }
     fn has_workspace_dependency(&self) -> bool {
         // use count to enforce evaluation of iterator
-        self.workspace_dependencies()
-            .inspect(|dependency| debug!("Workspace dependency: {}", dependency.name))
-            .count()
-            > 0
+        self.workspace_dependencies().count() > 0
     }
 }
 #[derive(Debug)]

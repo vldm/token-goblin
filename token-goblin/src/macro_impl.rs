@@ -1,8 +1,8 @@
 use std::{fmt::Debug, path::PathBuf, str::FromStr};
 
-use proc_macro2::{Delimiter, Group, Span, TokenStream};
+use proc_macro2::{Delimiter, Group, Span, TokenStream, TokenTree};
 use quote::{ToTokens, format_ident, quote, quote_spanned};
-use syn::{Token, spanned::Spanned};
+use syn::{Attribute, Token, parse::Parser, punctuated::Punctuated, spanned::Spanned};
 
 use crate::{
     Result,
@@ -116,7 +116,16 @@ impl Debug for ProxyArgs {
     }
 }
 
-#[derive(Debug)]
+impl Debug for ProxyInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ProxyInput {{ proxy_args: {:?}, tokens: \"{}\" }}",
+            self.proxy_args, self.tokens
+        )
+    }
+}
+
 pub struct ProxyInput {
     pub proxy_args: ProxyArgs,
     pub tokens: proc_macro2::TokenStream,
@@ -229,6 +238,39 @@ impl Default for Config {
         }
     }
 }
+
+struct SpitArgs {
+    pub list_of_macros: Vec<syn::Path>,
+}
+impl syn::parse::Parse for SpitArgs {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let attrs = Attribute::parse_outer(input)?;
+
+        let mut list_of_macros: Vec<syn::Path> = Vec::new();
+        for attr in attrs {
+            if !attr.path().is_ident("charm") {
+                continue;
+            }
+            let syn::Meta::List(list) = attr.meta else {
+                continue;
+            };
+            list_of_macros.push(syn::parse2(list.tokens.clone())?);
+        }
+        debug!(
+            "list_of_macros: {}",
+            list_of_macros
+                .iter()
+                .map(|attr| attr.to_token_stream().to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        while !input.is_empty() {
+            // consume item
+            let _ = input.parse::<TokenTree>()?;
+        }
+        Ok(Self { list_of_macros })
+    }
+}
 #[allow(clippy::needless_pass_by_value, reason = "better api")]
 pub fn munch_impl(args: TokenStream, item_tts: TokenStream) -> Result<TokenStream> {
     let config = Config::from_attrs(args.clone())?;
@@ -275,35 +317,6 @@ pub fn munch_impl(args: TokenStream, item_tts: TokenStream) -> Result<TokenStrea
     Ok(build_result.emit())
 }
 
-fn build_template(item: syn_items::Item) -> Result<TemplateContext> {
-    let template = timed!("build_template", {
-        match item {
-            syn_items::Item::Fn(item) => TemplateContext::from_fn(item),
-            syn_items::Item::Mod(item) => TemplateContext::from_mod(item),
-            // In case we need to support `macro foo {}` items
-            // syn::Item::Verbatim(item) => macro_impl(config, item),
-            // for macro_rules! syntax (both looks useless, since it's always easier
-            // to implement custom `macro_rules!` wrapper )
-            // syn::Item::Macro(item) => macro_impl(config, item),
-            v @ syn_items::Item::Verbatim(_) => {
-                Err(error!(v.span() => "Expected function or module" ))
-            }
-        }
-    })?;
-
-    if crate::DEBUG_ENV {
-        debug!("env vars: {}", get_env_vars());
-        let span: proc_macro::Span = template.name_span().unwrap();
-        debug!(
-            "span_source_file: {}, {:?}, line: {}",
-            span.file(),
-            span.local_file(),
-            span.line()
-        );
-    }
-    Ok(template)
-}
-
 pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenStream> {
     debug!("proxy input: {}", input);
     let input: ProxyInput = syn::parse2(input)?;
@@ -332,6 +345,50 @@ pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenS
         &input.proxy_args.macro_name.to_string(),
         input.tokens,
     )
+}
+
+pub fn spit_impl(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
+    Ok(quote! {
+        #attr!{#item}
+    })
+}
+/// Extract `spit` attributes from input, and return token stream with them called.
+pub fn spit_derive_impl(input: TokenStream) -> Result<TokenStream> {
+    let original_input = input.clone();
+    let list_of_macros = syn::parse2::<SpitArgs>(input)?.list_of_macros;
+
+    Ok(quote! {
+        #(#list_of_macros!{#original_input})*
+    })
+}
+
+fn build_template(item: syn_items::Item) -> Result<TemplateContext> {
+    let template = timed!("build_template", {
+        match item {
+            syn_items::Item::Fn(item) => TemplateContext::from_fn(item),
+            syn_items::Item::Mod(item) => TemplateContext::from_mod(item),
+            // In case we need to support `macro foo {}` items
+            // syn::Item::Verbatim(item) => macro_impl(config, item),
+            // for macro_rules! syntax (both looks useless, since it's always easier
+            // to implement custom `macro_rules!` wrapper )
+            // syn::Item::Macro(item) => macro_impl(config, item),
+            v @ syn_items::Item::Verbatim(_) => {
+                Err(error!(v.span() => "Expected function or module" ))
+            }
+        }
+    })?;
+
+    if crate::DEBUG_ENV {
+        debug!("env vars: {}", get_env_vars());
+        let span: proc_macro::Span = template.name_span().unwrap();
+        debug!(
+            "span_source_file: {}, {:?}, line: {}",
+            span.file(),
+            span.local_file(),
+            span.line()
+        );
+    }
+    Ok(template)
 }
 
 impl TemplateContext {

@@ -8,3 +8,5 @@ token-goblin = { path = "../token-goblin" }
 
 [dev-dependencies]
 token-goblin-runtime = { path = "../runtime" }
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"

@@ -97,3 +97,32 @@ pub fn snif(input: TokenStream) -> TokenStream {
         input
     })
 }
+///
+/// Adaptor to function-like macro, that allows using them as derive macro.
+///
+/// ```
+/// #[derive(token_goblin::Spit)]
+/// #[charm(path_to_macro)]
+/// struct MyStruct {
+///   field: i32,
+/// }
+/// ```
+/// will expand to:
+/// ```
+#[proc_macro_derive(Spit, attributes(charm))]
+pub fn spit_derive(input: TokenStream) -> TokenStream {
+    timed!("spit_derive", {
+        macro_impl::spit_derive_impl(input.into())
+            .map_compile_error()
+            .into()
+    })
+}
+
+#[proc_macro_attribute]
+pub fn spit(attr: TokenStream, item: TokenStream) -> TokenStream {
+    timed!("spit", {
+        macro_impl::spit_impl(attr.into(), item.into())
+            .map_compile_error()
+            .into()
+    })
+}
