@@ -11,7 +11,10 @@ use std::path::Path;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-use crate::template::TemplateContext;
+use crate::{
+    macro_impl::{Config, Lazieness},
+    template::TemplateContext,
+};
 
 /// Returns true if proc-server is IDE.
 /// (Currently only `rust-analyzer` is supported)
@@ -59,13 +62,6 @@ pub fn emit_ide_helper_mod(template_context: &TemplateContext) -> TokenStream {
     }
 }
 
-// ///
-// /// Returns true if we are under IDE and input tokenstream is in edit (carret contain 'intellijRulezz' ident)
-// ///
-// pub fn skip_compile_hack(template_context: &TemplateContext) -> bool {
-//     if !is_ide() {
-//         return false;
-//     }
-//     template_context.generated_content
-//     input.contains("intellijRulezz")
-// }
+pub fn is_lazy(config: Config) -> bool {
+    config.lazy == Lazieness::Enforced || (config.lazy == Lazieness::Default && is_ide())
+}

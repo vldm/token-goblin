@@ -81,11 +81,12 @@ pub fn proxy(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn munch(attr: TokenStream, item: TokenStream) -> TokenStream {
-    timed!("munch", {
+    let out: TokenStream = timed!("munch", {
         macro_impl::munch_impl(attr.into(), item.into())
             .map_compile_error()
             .into()
-    })
+    });
+    out
 }
 
 #[proc_macro_derive(Snif, attributes(snif))]

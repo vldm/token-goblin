@@ -9,7 +9,7 @@ use std::{
 };
 
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
 
 use crate::{
     Result,
@@ -70,12 +70,20 @@ impl TemplateContext {
 // custom because syn::Visibility doesn't implement Debug
 impl Debug for TemplateContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("TemplateContext {")?;
-        f.write_str("package_name: ")?;
-        f.write_str(&self.package_name)?;
-        f.write_str("package_extra: ")?;
-        f.write_str(&self.package_extra)?;
-        f.write_str("}")?;
+        f.debug_struct("TemplateContext")
+            .field("package_name", &self.package_name)
+            .field("package_extra", &self.package_extra)
+            .field("source_metadata", &self.source_metadata)
+            .field("entries", &self.entries.len())
+            .field("generated_content", &self.generated_content)
+            .field(
+                "mod_name",
+                &self
+                    .mod_name
+                    .as_ref()
+                    .map(|(vis, name)| (vis.to_token_stream(), name.to_string())),
+            )
+            .finish()?;
         Ok(())
     }
 }
