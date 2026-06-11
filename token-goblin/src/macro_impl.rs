@@ -276,7 +276,7 @@ pub fn munch_impl(args: TokenStream, item_tts: TokenStream) -> Result<TokenStrea
 }
 
 fn build_template(item: syn_items::Item) -> Result<TemplateContext> {
-    let template = timed!("template_context", {
+    let template = timed!("build_template", {
         match item {
             syn_items::Item::Fn(item) => TemplateContext::from_fn(item),
             syn_items::Item::Mod(item) => TemplateContext::from_mod(item),
@@ -517,23 +517,25 @@ impl BuildContext {
 }
 
 fn render_template(context: &TemplateContext, config: Config) -> Result<GeneratedCrate> {
-    let (output_dir, stable) = path::calculate_generated_path(context.name_span());
+    timed!("render_template", {
+        let (output_dir, stable) = path::calculate_generated_path(context.name_span());
 
-    debug!(
-        "path_is_stable: {}, config.cache: {}",
-        stable, config.incremental
-    );
+        debug!(
+            "path_is_stable: {}, config.cache: {}",
+            stable, config.incremental
+        );
 
-    // If user enforces no-cache, or we cannot find macro declaration path
-    // we need to include the source hash
-    let include_source_hash = !(config.incremental && stable);
+        // If user enforces no-cache, or we cannot find macro declaration path
+        // we need to include the source hash
+        let include_source_hash = !(config.incremental && stable);
 
-    template::render_crate(
-        &output_dir,
-        context,
-        config.split_cache,
-        include_source_hash,
-    )
+        template::render_crate(
+            &output_dir,
+            context,
+            config.split_cache,
+            include_source_hash,
+        )
+    })
 }
 
 fn entries_impl(

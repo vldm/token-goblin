@@ -192,8 +192,8 @@ fn resolve_span(range: &Range<usize>, source: &SerializedInput) -> Span {
     if range.is_empty() {
         Span::call_site()
     } else {
-        debug!("resolve_span: {range:?}");
-        debug!("source: {:?}", source);
+        // debug!("resolve_span: {range:?}");
+        // debug!("source: {:?}", source);
         source
             .span_at(range.start)
             .expect("missing source span for guest output token")

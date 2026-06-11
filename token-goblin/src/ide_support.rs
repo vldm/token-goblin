@@ -36,7 +36,8 @@ fn format_ide_helper_mod(template_context: &TemplateContext) -> TokenStream {
         .dependencies
         .iter()
         .map(|dep| {
-            let name = format_ident!("{}", &dep.name);
+            let name = dep.name.replace('-', "_");
+            let name = format_ident!("{}", name);
 
             quote! {
                 extern crate #name;

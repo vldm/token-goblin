@@ -54,14 +54,12 @@ impl Metadata {
     fn from_manifest(manifest_path: &Path) -> Result<Self> {
         let manifest: toml::Value = read_toml_file(manifest_path)?;
 
-        let dependencies = match manifest
-            .get("build-dependencies")
-            .and_then(|v| v.as_table())
-        {
+        let dependencies = match manifest.get("dev-dependencies").and_then(|v| v.as_table()) {
             Some(dependencies) => dependencies
                 .iter()
                 .filter(|(name, _)| *name != "token-goblin-runtime")
                 .map(|(name, value)| {
+                    dbg!(name, value);
                     Dependency::new(name.clone(), manifest_path.to_path_buf(), value.clone())
                 })
                 .collect::<Result<Vec<Dependency>>>()?,
@@ -124,7 +122,7 @@ impl Dependency {
     }
 }
 
-/// Load `build-dependencies` section of `Cargo.toml`.
+/// Load `dev-dependencies` section of `Cargo.toml`.
 /// Used on expansion of macro definition (aka `munch` macro)
 pub fn load_dependencies() -> Result<Metadata> {
     let manifest_path = manifest_path()?;

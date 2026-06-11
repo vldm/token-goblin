@@ -7,5 +7,3 @@ edition = "2024"
 
 [dependencies]
 token-goblin = { path = "../../../token-goblin" }
-
-[build-dependencies]

@@ -76,7 +76,7 @@ cargo test -p token-goblin --test fixtures
 
 ## Offline build
 
-Note: `token-goblin-runtime` is hardcoded dependency of generated crates, and might be not downloaded using `cargo fetch` or `cargo vendor`, in order to build offline, add `token-goblin-runtime` to `[build-dependencies]` in your `Cargo.toml`.
+Note: `token-goblin-runtime` is hardcoded dependency of generated crates, and might be not downloaded using `cargo fetch` or `cargo vendor`, in order to build offline, add `token-goblin-runtime` to `[dev-dependencies]` in your `Cargo.toml`.
 
 # Ceveats:
 - only `proc-macro2::fallback` is used (no `proc-macro` api is available) in generated crates (which introduce some limitations)

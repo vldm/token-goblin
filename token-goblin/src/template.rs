@@ -183,7 +183,7 @@ fn render_template_tree(
     Ok(())
 }
 
-/// Render `build-dependencies` from project metadata into `[dependencies]` TOML.
+/// Render `dev-dependencies` from project metadata into `[dependencies]` TOML.
 fn render_dependencies(metadata: &Metadata) -> Result<String> {
     metadata
         .dependencies
@@ -213,10 +213,7 @@ fn render_value_dependency(
         .ok_or_else(|| error!("manifest path has no parent: {}", manifest_path.display()))?;
 
     let value = rewrite_dependency_paths(value, manifest_dir, name)?;
-    Ok(format!(
-        "{name} = {{ {} }}",
-        toml::to_string(&value).map_err(|e| error!("{e}"))?
-    ))
+    Ok(format!("{name} = {value}"))
 }
 
 // Replace relative paths to absolute paths
