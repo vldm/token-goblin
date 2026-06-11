@@ -8,6 +8,7 @@ mod timings;
 type Result<T, E = syn::Error> = std::result::Result<T, E>;
 
 mod dylib;
+mod ide_support;
 mod macro_impl;
 mod metadata;
 mod path;

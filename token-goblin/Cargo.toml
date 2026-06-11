@@ -20,6 +20,8 @@ libloading = "0.9"
 [dev-dependencies]
 trybuild = "1.0"
 proc-macro2 = "1.0"
+token-goblin-runtime = { path = "../runtime" }
+
 
 [features]
 default = [] # ["use_release_profile"]

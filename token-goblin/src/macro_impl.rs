@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{path::PathBuf, str::FromStr};
 
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, format_ident, quote, quote_spanned};
@@ -7,7 +7,7 @@ use syn::spanned::Spanned;
 use crate::{
     Result,
     dylib::{self, BuildProfile},
-    metadata, path,
+    ide_support, metadata, path,
     template::{self, TemplateContext},
 };
 
@@ -59,26 +59,7 @@ impl syn::parse::Parse for ProxyInput {
     }
 }
 
-/// How to emit debug information during macro expansion.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum DebugMode {
-    /// Source macro is expected to produce items and we can emit extra items with debug information.
-    Item,
-    /// Source macro is expected to produce expression so we need to wrap extra items into a block.
-    Expression,
-}
-impl FromStr for DebugMode {
-    type Err = syn::Error;
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s {
-            "item" => Ok(DebugMode::Item),
-            "expression" | "expr" => Ok(DebugMode::Expression),
-            _ => Err(error!(Span::call_site() => "Unknown debug mode: {}", s)),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug)]
 pub struct Config {
     // If set to false, we add source-hash to output path
     // This enforces recompilation of the macro for each change in the source code.
@@ -87,8 +68,6 @@ pub struct Config {
     pub split_cache: bool,
     // Cargo build profile
     pub profile: BuildProfile,
-    // How to emit debug information during macro expansion.
-    pub debug: Option<DebugMode>,
 }
 
 impl syn::parse::Parse for Config {
@@ -112,10 +91,6 @@ impl syn::parse::Parse for Config {
                 "profile" => {
                     config.profile =
                         lit_to_string(value).and_then(|s| BuildProfile::from_str(&s))?;
-                }
-                "debug" => {
-                    config.debug =
-                        Some(lit_to_string(value).and_then(|s| DebugMode::from_str(&s))?);
                 }
                 _ => return Err(error!(key.span() => "Unknown key: {}", key)),
             }
@@ -154,7 +129,6 @@ impl Default for Config {
             cache: true,
             split_cache: false,
             profile: BuildProfile::default(),
-            debug: None,
         }
     }
 }
@@ -287,9 +261,14 @@ fn build_and_compile_crate(
         include_source_hash,
     )?;
 
-    let dylib = timed!("compile_crate", {
-        dylib::compile_crate(&generated, config.profile)?
+    let dylib_error = timed!("compile_crate", {
+        dylib::compile_crate(&generated, config.profile)
     });
+
+    let (dylib_path, compile_error) = match dylib_error {
+        Ok(dylib) => (dylib.dylib_path, TokenStream::new()),
+        Err(e) => (PathBuf::new(), e.to_compile_error()),
+    };
 
     debug!("generated crate: {}", generated.source_dir.display());
 
@@ -298,6 +277,27 @@ fn build_and_compile_crate(
         .as_ref()
         .map_or_else(|| format_ident!("global"), |(_, name)| name.clone());
 
+    // Build doc comments for compile info
+    let compile_info_docs = {
+        use std::fmt::Write;
+        let mut comments = String::new();
+        writeln!(&mut comments, "/// Compile info:").ok();
+        writeln!(&mut comments, "///   Profile: {}", config.profile).ok();
+        writeln!(&mut comments, "///   Split cache: {}", config.split_cache).ok();
+        writeln!(&mut comments, "///   Cache: {}", config.cache).ok();
+        writeln!(
+            &mut comments,
+            "///   Generated crate: {}",
+            generated.source_dir.display()
+        )
+        .ok();
+        writeln!(&mut comments, "///   envs: \n").ok();
+        get_env_vars().split('\n').for_each(|line| {
+            writeln!(&mut comments, "///   {line}").ok();
+        });
+        TokenStream::from_str(&comments).unwrap()
+    };
+    let ide_helper_mod = ide_support::emit_ide_helper_mod(template_context);
     // Using mixed site to resolve `$crate`.
     let crate_proxy = quote_spanned! { Span::mixed_site() =>
         $crate::proxy!
@@ -306,10 +306,7 @@ fn build_and_compile_crate(
     let mut out = vec![];
     for entry in &template_context.entries {
         let proxy_input = ProxyArgs {
-            dylib_path: syn::LitStr::new(
-                &dylib.dylib_path.display().to_string(),
-                Span::call_site(),
-            ),
+            dylib_path: syn::LitStr::new(&dylib_path.display().to_string(), Span::call_site()),
             macro_name: entry.sig.ident.clone(),
         };
         let visibility = &entry.vis;
@@ -341,11 +338,23 @@ fn build_and_compile_crate(
 
     let out = if let Some((vis, _)) = &template_context.mod_name {
         quote! {
-           #vis mod #mod_name {
-               #(#out)*
-        } }
+            #ide_helper_mod
+            #compile_error
+
+            #compile_info_docs
+            #vis mod #mod_name {
+                #(#out)*
+            }
+        }
     } else {
-        quote! { #(#out)* }
+        quote! {
+            #ide_helper_mod
+            #compile_error
+
+            #compile_info_docs
+            const _: () = (); // add new item, to prevent `cargo expand` cleanup.
+            #(#out)*
+        }
     };
 
     debug!("out: {}", out);

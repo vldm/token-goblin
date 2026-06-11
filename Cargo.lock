@@ -223,6 +223,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-my-crate"
+version = "0.1.0"
+dependencies = [
+ "token-goblin",
+ "token-goblin-runtime",
+]
+
+[[package]]
 name = "token-goblin"
 version = "0.1.0"
 dependencies = [
@@ -231,6 +239,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+ "token-goblin-runtime",
  "toml 0.5.11",
  "trybuild",
 ]

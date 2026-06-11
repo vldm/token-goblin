@@ -85,10 +85,9 @@ mod module {
     }
 
     pub fn module_macro_embed(_: TokenStream) -> TokenStream {
-        TokenStream::from_str("12"g).unwrap()
+        TokenStream::from_str("12").unwrap()
     }
 }
-
 #[test]
 fn test_module() {
     let x = module::module_macro!(12);

@@ -1,0 +1,9 @@
+[package]
+name = "test-my-crate"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+token-goblin = { path = "../token-goblin" }
+[dev-dependencies]
+token-goblin-runtime = { path = "../runtime" }

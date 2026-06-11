@@ -5,6 +5,7 @@
 //! paths to an already-generated crate tree.
 
 use std::ffi::CStr;
+use std::fmt::Display;
 use std::os::raw::c_char;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -31,6 +32,11 @@ impl FromStr for BuildProfile {
             "release" => Ok(BuildProfile::Release),
             _ => Err(error!(Span::call_site() => "Unknown build profile: {}", s)),
         }
+    }
+}
+impl Display for BuildProfile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.subdir())
     }
 }
 

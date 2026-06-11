@@ -60,6 +60,7 @@ impl Metadata {
         {
             Some(dependencies) => dependencies
                 .iter()
+                .filter(|(name, _)| *name != "token-goblin-runtime")
                 .map(|(name, value)| {
                     Dependency::new(name.clone(), manifest_path.to_path_buf(), value.clone())
                 })
