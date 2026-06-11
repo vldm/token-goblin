@@ -317,6 +317,12 @@ pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenS
             let template = build_template(input)?;
             let build_result = BuildContext::render_and_compile(template, config)?;
 
+            if !build_result.compile_error.is_empty() {
+                let compile_error = &build_result.compile_error;
+                return Ok(quote! {
+                    #compile_error
+                });
+            }
             build_result.dylib_path
         }
     };

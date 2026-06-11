@@ -1,5 +1,6 @@
-#[token_goblin::munch(lazy)]
-fn add(mut input: TokenStream) -> TokenStream {
+#[token_goblin::munch]
+pub fn add(mut input: TokenStream) -> TokenStream {
+    use std::str::FromStr;
     input.extend(TokenStream::from_str(" + 3"));
     input
 }

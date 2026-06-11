@@ -76,7 +76,7 @@ impl Debug for TemplateContext {
             .field("package_extra", &self.package_extra)
             .field("source_metadata", &self.source_metadata)
             .field("entries", &self.entries.len())
-            .field("generated_content", &self.generated_content)
+            .field("generated_content", &"<skipped>")
             .field(
                 "mod_name",
                 &self
