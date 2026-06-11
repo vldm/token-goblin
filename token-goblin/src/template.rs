@@ -16,6 +16,7 @@ use crate::{
     dylib::GeneratedCrate,
     metadata::{Dependency, Metadata, ValueOrWorkspace},
     path::FsLockGuard,
+    syn_items,
 };
 
 const MARKER: &str = "goblin-stencil:";
@@ -26,7 +27,7 @@ pub struct TemplateContext {
     pub package_extra: String,
     pub source_metadata: Metadata,
     // Entries of generated module.
-    pub entries: Vec<syn::ItemFn>,
+    pub entries: Vec<syn_items::ItemFn>,
 
     // Content of generated module.
     pub generated_content: TokenStream,

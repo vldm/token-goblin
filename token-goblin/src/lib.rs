@@ -14,6 +14,7 @@ mod metadata;
 mod path;
 mod rustc_meta;
 mod span_recovery;
+mod syn_items;
 mod template;
 use errors::MapCompileError;
 

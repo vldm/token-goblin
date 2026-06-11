@@ -164,7 +164,7 @@ fn extract_workspace_manifest(path: &Path) -> Result<Option<toml::Value>> {
 }
 
 fn read_toml_file(path: &Path) -> Result<toml::Value> {
-    std::fs::read_to_string(path)
-        .and_then(|s| Ok(toml::from_str(&s)?))
-        .map_err(|e| syn::Error::new(Span::call_site(), e.to_string()))
+    let val = std::fs::read_to_string(path)
+        .map_err(|e| error!(Span::call_site() => "Failed to read TOML file: {e}"))?;
+    toml::from_str(&val).map_err(|e| error!(Span::call_site() => "Failed to parse TOML file: {e}"))
 }

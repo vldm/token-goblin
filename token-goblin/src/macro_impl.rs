@@ -8,7 +8,7 @@ use crate::{
     Result,
     dylib::{self, BuildProfile, GeneratedCrate},
     ide_support::{self, is_lazy},
-    metadata, path,
+    metadata, path, syn_items,
     template::{self, TemplateContext},
 };
 
@@ -233,7 +233,7 @@ impl Default for Config {
 pub fn munch_impl(args: TokenStream, item_tts: TokenStream) -> Result<TokenStream> {
     let config = Config::from_attrs(args.clone())?;
 
-    let item = syn::parse2::<syn::Item>(item_tts.clone())?;
+    let item = syn::parse2::<syn_items::Item>(item_tts.clone())?;
     let context = build_template(item)?;
 
     if is_lazy(config) {
@@ -275,17 +275,19 @@ pub fn munch_impl(args: TokenStream, item_tts: TokenStream) -> Result<TokenStrea
     Ok(build_result.emit())
 }
 
-fn build_template(item: syn::Item) -> Result<TemplateContext> {
+fn build_template(item: syn_items::Item) -> Result<TemplateContext> {
     let template = timed!("template_context", {
         match item {
-            syn::Item::Fn(item) => TemplateContext::from_fn(item),
-            syn::Item::Mod(item) => TemplateContext::from_mod(item),
+            syn_items::Item::Fn(item) => TemplateContext::from_fn(item),
+            syn_items::Item::Mod(item) => TemplateContext::from_mod(item),
             // In case we need to support `macro foo {}` items
             // syn::Item::Verbatim(item) => macro_impl(config, item),
             // for macro_rules! syntax (both looks useless, since it's always easier
             // to implement custom `macro_rules!` wrapper )
             // syn::Item::Macro(item) => macro_impl(config, item),
-            v => Err(error!(v.span() => "Expected function or module" )),
+            v @ syn_items::Item::Verbatim(_) => {
+                Err(error!(v.span() => "Expected function or module" ))
+            }
         }
     })?;
 
@@ -311,7 +313,7 @@ pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenS
         ProxyMode::Precompiled { dylib_path } => PathBuf::from(dylib_path.value()),
         ProxyMode::Lazy { config, src } => {
             let config = Config::from_attrs(config.stream())?;
-            let input: syn::Item = syn::parse2(src.stream())?;
+            let input: syn_items::Item = syn::parse2(src.stream())?;
             let template = build_template(input)?;
             let build_result = BuildContext::render_and_compile(template, config)?;
 
@@ -327,7 +329,7 @@ pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenS
 }
 
 impl TemplateContext {
-    fn from_fn(item: syn::ItemFn) -> Result<Self> {
+    fn from_fn(item: syn_items::ItemFn) -> Result<Self> {
         let name = &item.sig.ident;
         let package_name = format!("token-goblin-{}", name.to_string().replace('_', "-"));
 
@@ -363,7 +365,7 @@ impl TemplateContext {
         }
     }
 
-    fn from_mod(mod_item: syn::ItemMod) -> Result<Self> {
+    fn from_mod(mod_item: syn_items::ItemMod) -> Result<Self> {
         let name = &mod_item.ident;
         let package_name = format!("token-goblin-{}", name.to_string().replace('_', "-"));
 
@@ -374,7 +376,7 @@ impl TemplateContext {
         let mut entries = Vec::new();
 
         for item in &content {
-            if let syn::Item::Fn(item) = item
+            if let syn_items::Item::Fn(item) = item
                 && Self::is_exportable(&item.vis)
             {
                 // Only public functions are considered as entry points to token-goblin.
@@ -415,11 +417,15 @@ impl BuildContext {
         });
 
         let (dylib_path, compile_error) = match dylib_error {
-            Ok(dylib) => (dylib.dylib_path, TokenStream::new()),
-            Err(e) => (PathBuf::new(), e.to_compile_error()),
+            Ok(dylib) => {
+                debug!("generated: {}", dylib.dylib_path.display());
+                (dylib.dylib_path, TokenStream::new())
+            }
+            Err(e) => {
+                debug!("generated: failed to compile: {}", e);
+                (PathBuf::new(), e.to_compile_error())
+            }
         };
-
-        debug!("generated crate: {}", generated.source_dir.display());
 
         Ok(Self {
             config,
@@ -526,7 +532,7 @@ fn render_template(context: &TemplateContext, config: Config) -> Result<Generate
 
 fn entries_impl(
     mod_name: &syn::Ident,
-    entries: &[syn::ItemFn],
+    entries: &[syn_items::ItemFn],
     proxy_input: impl Fn(&syn::Ident) -> ProxyArgs,
 ) -> Vec<TokenStream> {
     // Using mixed site to resolve `$crate`.
