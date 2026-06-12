@@ -46,8 +46,12 @@ fn format_ide_helper_mod(template_context: &TemplateContext) -> TokenStream {
         })
         .collect::<Vec<_>>();
     let content = &template_context.generated_content;
+    let mod_name = format_ident!(
+        "__ide_tg_helper{}",
+        cargo_crate_name(&template_context.package_name)
+    );
     quote! {
-        mod __ide_tg_helper {
+        mod #mod_name {
             extern crate token_goblin_runtime;
             use token_goblin_runtime::prelude::*;
             #(#deps)*
