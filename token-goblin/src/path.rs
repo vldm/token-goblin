@@ -38,14 +38,11 @@ pub fn manifest_path() -> Result<PathBuf> {
 /// Recursively try search parent folders for `Cargo.toml`.
 /// Stops when extract function returns `Some` or error
 pub fn search_for_parent_manifest<U>(
-    path: &Path,
+    manifest_path: &Path,
     extract: impl Fn(&Path) -> Result<Option<U>>,
 ) -> Result<U> {
-    let mut prev = path;
-    while let Some(path) = prev.parent() {
-        prev = path;
-
-        let try_path = path.join("Cargo.toml");
+    for current in manifest_path.ancestors().skip(1) {
+        let try_path = current.join("Cargo.toml");
         // If file doesn't exist it is not an error, try parent folder
         if !try_path.exists() {
             continue;

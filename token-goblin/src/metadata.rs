@@ -128,8 +128,7 @@ pub fn load_dependencies() -> Result<Metadata> {
         return Ok(metadata);
     }
     // resolve workspace dependencies
-    let workspace_manifest =
-        search_for_parent_manifest(&manifest_path, extract_workspace_manifest)?;
+    let (workspace_manifest, _) = find_workspace_manifest(&manifest_path)?;
 
     let Some(workspace_table) = workspace_manifest
         .get("workspace")
@@ -146,13 +145,17 @@ pub fn load_dependencies() -> Result<Metadata> {
     }
     Ok(metadata)
 }
+
+pub fn find_workspace_manifest(manifest_path: &Path) -> Result<(toml::Value, PathBuf)> {
+    search_for_parent_manifest(manifest_path, extract_workspace_manifest)
+}
 // Try load file
 // Return `Some` if `workspace` key exists.
-fn extract_workspace_manifest(path: &Path) -> Result<Option<toml::Value>> {
+fn extract_workspace_manifest(path: &Path) -> Result<Option<(toml::Value, PathBuf)>> {
     let manifest: toml::Value = read_toml_file(path)?;
 
     if manifest.get("workspace").is_some() {
-        return Ok(Some(manifest));
+        return Ok(Some((manifest, path.to_path_buf())));
     }
     Ok(None)
 }

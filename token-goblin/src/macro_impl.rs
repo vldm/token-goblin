@@ -8,7 +8,9 @@ use crate::{
     Result,
     dylib::{self, BuildProfile, GeneratedCrate},
     ide_support::{self, is_lazy},
-    metadata, path, syn_items,
+    metadata, path,
+    rust_mod_fs::SpanLocation,
+    syn_items,
     template::{self, TemplateContext},
 };
 
@@ -401,6 +403,20 @@ impl BuildContext {
                 &mut comments,
                 "///   Generated crate: {}",
                 self.generated.source_dir.display()
+            )
+            .ok();
+            let span_location =
+                SpanLocation::recover(self.template_context.name_span().unwrap()).unwrap();
+            writeln!(
+                &mut comments,
+                "///   Module path: {}",
+                span_location.module_path().to_token_stream()
+            )
+            .ok();
+            writeln!(
+                &mut comments,
+                "///   File path: {}",
+                span_location.file_path().display()
             )
             .ok();
             // writeln!(&mut comments, "///   envs: \n").ok();
