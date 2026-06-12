@@ -35,13 +35,13 @@ pub fn manifest_path() -> Result<PathBuf> {
     Ok(manifest_path)
 }
 
-/// Recursively try search parent folders for `Cargo.toml`.
-/// Stops when extract function returns `Some` or error
+/// Walk from `start` through parent directories looking for `Cargo.toml`.
+/// Stops at the first manifest for which `extract` returns `Some`.
 pub fn search_for_parent_manifest<U>(
-    manifest_path: &Path,
+    start: &Path,
     extract: impl Fn(&Path) -> Result<Option<U>>,
-) -> Result<U> {
-    for current in manifest_path.ancestors().skip(1) {
+) -> Result<Option<U>> {
+    for current in start.ancestors() {
         let try_path = current.join("Cargo.toml");
         // If file doesn't exist it is not an error, try parent folder
         if !try_path.exists() {
@@ -49,11 +49,11 @@ pub fn search_for_parent_manifest<U>(
         }
         let result = extract(&try_path)?;
         if let Some(value) = result {
-            return Ok(value);
+            return Ok(Some(value));
         }
     }
 
-    bail!(Span::call_site() => "No parent directory found")
+    Ok(None)
 }
 
 /// Use source span to request path of macro definition.

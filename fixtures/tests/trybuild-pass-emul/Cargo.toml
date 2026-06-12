@@ -1,0 +1,23 @@
+# Emulates trybuild `pass` setup:
+# - separate workspace (not a member of repo root workspace)
+# - stub bin in this directory
+# - additional bin target pointing at an external .rs file outside this crate root
+[workspace]
+
+[package]
+name = "trybuild-pass-emul"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+token-goblin = { path = "../../../token-goblin" }
+proc-macro2 = { version = "1.0", features = ["span-locations"] }
+
+[[bin]]
+name = "trybuild-pass-emul"
+path = "main.rs"
+
+[[bin]]
+name = "module_visibility_pass"
+path = "../module_visibility_pass.rs"

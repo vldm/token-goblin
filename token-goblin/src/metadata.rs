@@ -6,14 +6,11 @@
 //!    try to find parent workspace `Cargo.toml` and fill information from it.
 //!
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use proc_macro2::Span;
 
-use crate::{
-    Result,
-    path::{manifest_path, search_for_parent_manifest},
-};
+use crate::{Result, path::{manifest_path, search_for_parent_manifest}};
 type TomlTable = toml::map::Map<String, toml::Value>;
 
 // Whether value set, or uses workspace version
@@ -128,7 +125,12 @@ pub fn load_dependencies() -> Result<Metadata> {
         return Ok(metadata);
     }
     // resolve workspace dependencies
-    let (workspace_manifest, _) = find_workspace_manifest(&manifest_path)?;
+    let Some((workspace_manifest, _)) = find_workspace_manifest(&manifest_path)? else {
+        return Err(error!(
+            Span::call_site() =>
+            "Dependency uses workspace inheritance, but no containing workspace manifest was found"
+        ));
+    };
 
     let Some(workspace_table) = workspace_manifest
         .get("workspace")
@@ -146,22 +148,331 @@ pub fn load_dependencies() -> Result<Metadata> {
     Ok(metadata)
 }
 
-pub fn find_workspace_manifest(manifest_path: &Path) -> Result<(toml::Value, PathBuf)> {
-    search_for_parent_manifest(manifest_path, extract_workspace_manifest)
-}
-// Try load file
-// Return `Some` if `workspace` key exists.
-fn extract_workspace_manifest(path: &Path) -> Result<Option<(toml::Value, PathBuf)>> {
-    let manifest: toml::Value = read_toml_file(path)?;
-
-    if manifest.get("workspace").is_some() {
-        return Ok(Some((manifest, path.to_path_buf())));
+/// Find the nearest workspace manifest that contains the crate at `manifest_path`.
+pub fn find_workspace_manifest(manifest_path: &Path) -> Result<Option<(toml::Value, PathBuf)>> {
+    if !manifest_path.is_file() {
+        return Ok(None);
     }
-    Ok(None)
+
+    let crate_root = manifest_path
+        .parent()
+        .ok_or_else(|| error!(Span::call_site() => "Manifest path has no parent"))?
+        .to_path_buf();
+
+    search_for_parent_manifest(&crate_root, |candidate_manifest| {
+        extract_workspace_manifest(&crate_root, candidate_manifest)
+    })
+}
+
+fn extract_workspace_manifest(
+    crate_root: &Path,
+    manifest_path: &Path,
+) -> Result<Option<(toml::Value, PathBuf)>> {
+    let manifest = read_toml_file(manifest_path)?;
+    let Some(workspace_table) = manifest.get("workspace").and_then(|v| v.as_table()) else {
+        return Ok(None);
+    };
+    let workspace_root = manifest_path
+        .parent()
+        .ok_or_else(|| error!(Span::call_site() => "Manifest path has no parent"))?;
+    if !is_crate_in_workspace(crate_root, workspace_root, &manifest, workspace_table)? {
+        return Ok(None);
+    }
+    Ok(Some((manifest, manifest_path.to_path_buf())))
+}
+
+/// Return workspace root directory for a crate manifest, falling back to the crate root itself.
+pub fn workspace_root_for_manifest(manifest_path: &Path) -> Result<PathBuf> {
+    let crate_root = manifest_path
+        .parent()
+        .ok_or_else(|| error!(Span::call_site() => "Manifest path has no parent"))?
+        .to_path_buf();
+
+    Ok(find_workspace_manifest(manifest_path)?
+        .and_then(|(_, workspace_manifest)| workspace_manifest.parent().map(Path::to_path_buf))
+        .unwrap_or(crate_root))
+}
+
+fn is_crate_in_workspace(
+    crate_root: &Path,
+    workspace_root: &Path,
+    workspace_manifest: &toml::Value,
+    workspace_table: &TomlTable,
+) -> Result<bool> {
+    let crate_root = canonicalize_lossy(crate_root);
+    let workspace_root = canonicalize_lossy(workspace_root);
+
+    let relative_path = crate_root
+        .strip_prefix(&workspace_root)
+        .map_err(|_| error!(Span::call_site() => "Failed to compute crate path relative to workspace"))?;
+    let relative_path = normalize_relative_path(relative_path);
+
+    let exclude = string_array(workspace_table.get("exclude"));
+    if is_path_matched_by_any_pattern(&relative_path, &exclude) {
+        return Ok(false);
+    }
+
+    if relative_path.is_empty() {
+        return Ok(workspace_manifest.get("package").is_some());
+    }
+
+    let members = string_array(workspace_table.get("members"));
+    if members.is_empty() {
+        // Default workspace members behavior: auto-discover all packages except excluded.
+        return Ok(true);
+    }
+
+    Ok(is_path_matched_by_any_pattern(&relative_path, &members))
+}
+
+fn string_array(value: Option<&toml::Value>) -> Vec<String> {
+    value
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn is_path_matched_by_any_pattern(relative_path: &str, patterns: &[String]) -> bool {
+    for prefix in path_prefixes(relative_path) {
+        if patterns
+            .iter()
+            .any(|pattern| wildcard_match(pattern, &prefix))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn path_prefixes(relative_path: &str) -> Vec<String> {
+    if relative_path.is_empty() {
+        return vec![String::new()];
+    }
+
+    let segments: Vec<&str> = relative_path.split('/').collect();
+    (0..segments.len())
+        .map(|end| segments[..=end].join("/"))
+        .collect()
+}
+
+fn normalize_relative_path(path: &Path) -> String {
+    path.components()
+        .filter_map(|component| match component {
+            Component::Normal(part) => Some(part.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn canonicalize_lossy(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn wildcard_match(pattern: &str, text: &str) -> bool {
+    fn match_at(pattern: &[u8], text: &[u8]) -> bool {
+        match (pattern.first(), text.first()) {
+            (None, None) => true,
+            (Some(b'*'), None) => match_at(&pattern[1..], text),
+            (Some(b'*'), Some(_)) => {
+                match_at(pattern, &text[1..]) || match_at(&pattern[1..], text)
+            }
+            (Some(b'?'), Some(_)) => match_at(&pattern[1..], &text[1..]),
+            (Some(p), Some(t)) if p == t => match_at(&pattern[1..], &text[1..]),
+            _ => false,
+        }
+    }
+
+    match_at(pattern.as_bytes(), text.as_bytes())
 }
 
 fn read_toml_file(path: &Path) -> Result<toml::Value> {
     let val = std::fs::read_to_string(path)
         .map_err(|e| error!(Span::call_site() => "Failed to read TOML file: {e}"))?;
     toml::from_str(&val).map_err(|e| error!(Span::call_site() => "Failed to parse TOML file: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_workspace(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time before unix epoch")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("token_goblin_metadata_{name}_{nanos}"));
+        fs::create_dir_all(&dir).expect("create temp workspace dir");
+        dir
+    }
+
+    fn write(path: &Path, contents: &str) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).expect("create parent dir");
+        }
+        fs::write(path, contents).expect("write file");
+    }
+
+    #[test]
+    fn own_manifest_with_workspace_is_accepted() {
+        let root = temp_workspace("own_workspace");
+        write(
+            &root.join("Cargo.toml"),
+            r#"
+[workspace]
+
+[package]
+name = "member"
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
+
+        let found = find_workspace_manifest(&root.join("Cargo.toml"))
+            .expect("lookup should succeed")
+            .expect("workspace should be found");
+        assert_eq!(found.1, root.join("Cargo.toml"));
+    }
+
+    #[test]
+    fn no_workspace_returns_none() {
+        let root = temp_workspace("no_workspace");
+        write(
+            &root.join("Cargo.toml"),
+            r#"
+[package]
+name = "solo"
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
+
+        assert!(
+            find_workspace_manifest(&root.join("Cargo.toml"))
+                .expect("lookup should succeed")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn parent_workspace_accepts_explicit_member() {
+        let root = temp_workspace("explicit_member");
+        write(
+            &root.join("Cargo.toml"),
+            r#"
+[workspace]
+members = ["crates/member"]
+
+[package]
+name = "root"
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
+        write(
+            &root.join("crates/member/Cargo.toml"),
+            r#"
+[package]
+name = "member"
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
+
+        let member_root = root.join("crates/member");
+        let found = find_workspace_manifest(&member_root.join("Cargo.toml"))
+            .expect("lookup should succeed")
+            .expect("member should belong to workspace");
+        assert_eq!(found.1, root.join("Cargo.toml"));
+    }
+
+    #[test]
+    fn parent_workspace_rejects_non_member() {
+        let root = temp_workspace("non_member");
+        write(
+            &root.join("Cargo.toml"),
+            r#"
+[workspace]
+members = ["crates/member"]
+
+[package]
+name = "root"
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
+        write(
+            &root.join("other/Cargo.toml"),
+            r#"
+[package]
+name = "other"
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
+
+        assert!(
+            find_workspace_manifest(&root.join("other/Cargo.toml"))
+                .expect("lookup should succeed")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn parent_workspace_rejects_excluded_wildcard_path() {
+        let root = temp_workspace("excluded");
+        write(
+            &root.join("Cargo.toml"),
+            r#"
+[workspace]
+members = ["*"]
+exclude = ["fixtures/*"]
+
+[package]
+name = "root"
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
+        write(
+            &root.join("fixtures/tests/smoke/Cargo.toml"),
+            r#"
+[package]
+name = "smoke"
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
+
+        assert!(
+            find_workspace_manifest(&root.join("fixtures/tests/smoke/Cargo.toml"))
+                .expect("lookup should succeed")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn workspace_root_for_manifest_falls_back_to_crate_root() {
+        let root = temp_workspace("fallback");
+        write(
+            &root.join("Cargo.toml"),
+            r#"
+[package]
+name = "solo"
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
+
+        assert_eq!(
+            workspace_root_for_manifest(&root.join("Cargo.toml")).expect("lookup should succeed"),
+            root
+        );
+    }
 }

@@ -12,6 +12,8 @@ const VISIBILITY_FIXTURES: &[&str] = &[
     "tests/module_visibility_fail.rs",
 ];
 
+const TRYBUILD_PASS_EMUL_DIR: &str = "tests/trybuild-pass-emul";
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -29,6 +31,26 @@ fn smoke_fixture_dir() -> PathBuf {
 
 fn smoke_manifest() -> PathBuf {
     smoke_fixture_dir().join("Cargo.toml")
+}
+
+fn trybuild_pass_emul_dir() -> PathBuf {
+    fixtures_root().join(TRYBUILD_PASS_EMUL_DIR)
+}
+
+fn trybuild_pass_emul_manifest() -> PathBuf {
+    trybuild_pass_emul_dir().join("Cargo.toml")
+}
+
+fn run_cargo_in_fixture(manifest: &PathBuf, fixture_dir: &PathBuf, args: &[&str]) -> std::process::Output {
+    let mut command = Command::new("cargo");
+    command.current_dir(fixture_dir);
+    for arg in args {
+        command.arg(arg);
+    }
+    command.arg("--manifest-path").arg(manifest);
+    command
+        .output()
+        .unwrap_or_else(|err| panic!("failed to spawn cargo in {}: {err}", fixture_dir.display()))
 }
 
 fn run_fixture_case(name: &str, config_rel: &str) -> Result<(), String> {
@@ -85,6 +107,38 @@ fn module_visibility_ui() {
 }
 
 #[test]
+fn trybuild_pass_emul_reproduces_span_location_panic() {
+    let fixture_dir = trybuild_pass_emul_dir();
+    let manifest = trybuild_pass_emul_manifest();
+    assert!(
+        manifest.is_file(),
+        "trybuild pass emulator manifest missing: {}",
+        manifest.display()
+    );
+
+    let output = run_cargo_in_fixture(
+        &manifest,
+        &fixture_dir,
+        &["build", "--bin", "module_visibility_pass"],
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    eprintln!("stdout:\n{stdout}");
+    eprintln!("stderr:\n{stderr}");
+
+    assert!(
+        !output.status.success(),
+        "expected build to fail while reproducing trybuild pass panic"
+    );
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("prefix not found") || combined.contains("custom attribute panicked"),
+        "expected SpanLocation panic, got:\n{combined}"
+    );
+}
+
+#[test]
 fn fixture_paths_exist() {
     let fixtures = fixtures_root();
     assert!(
@@ -117,4 +171,11 @@ fn fixture_paths_exist() {
             path.display()
         );
     }
+
+    let trybuild_pass_emul = trybuild_pass_emul_manifest();
+    assert!(
+        trybuild_pass_emul.is_file(),
+        "trybuild pass emulator manifest missing: {}",
+        trybuild_pass_emul.display()
+    );
 }

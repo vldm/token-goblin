@@ -6,7 +6,7 @@ use std::{
 
 use proc_macro2::{Delimiter, Span, TokenStream, TokenTree};
 
-use crate::{Result, metadata};
+use crate::{Result, metadata, path};
 
 pub struct SpanLocation {
     pub fs_workspace_root: PathBuf,
@@ -24,9 +24,7 @@ impl SpanLocation {
     /// - reparse `local_file()` with simplified parser, that will extract extra module information.
     pub fn recover(span: proc_macro::Span) -> Result<Self> {
         let fs_crate_root = Self::get_crate_root_path()?;
-        let (_, mut fs_workspace_manifest) = metadata::find_workspace_manifest(&fs_crate_root)?;
-        fs_workspace_manifest.pop();
-        let fs_workspace_root = fs_workspace_manifest;
+        let fs_workspace_root = metadata::workspace_root_for_manifest(&path::manifest_path()?)?;
         debug!("workspace_path: {}", fs_workspace_root.display());
         debug!("fs_crate_root: {}", fs_crate_root.display());
 
@@ -245,7 +243,7 @@ impl ModInfo {
     }
 
     fn components_from_idents(idents: &[proc_macro2::Ident]) -> Vec<String> {
-        idents.iter().map(|ident| ident.to_string()).collect()
+        idents.iter().map(ToString::to_string).collect()
     }
 
     fn path_from_components(components: &[String]) -> syn::Path {
