@@ -50,8 +50,7 @@ impl SpanLocation {
             .path_at_line_column(span.line(), span.column())
             .ok_or_else(
                 || error!(Span::call_site() => "SpanLocation: Failed to get module path postfix"),
-            )?
-            .clone();
+            )?;
         Ok(Self {
             fs_workspace_root,
             fs_crate_root,
@@ -144,7 +143,7 @@ impl SpanLocation {
 /// in format of map:
 /// `<byte_location> -> <module_path>`
 struct ModInfo {
-    modules: BTreeMap<usize, syn::Path>,
+    modules: BTreeMap<usize, Vec<String>>,
     /// Byte offset where each source line starts (`lines[0]` is line 1).
     lines: Vec<usize>,
 }
@@ -167,19 +166,19 @@ impl ModInfo {
             |e| error!(Span::call_site() => "SpanLocation: failed to tokenize source: {e}"),
         )?;
         let mut modules = BTreeMap::new();
-        modules.insert(0, Self::path_from_idents(&[]));
+        modules.insert(0, Self::components_from_idents(&[]));
         let mut path = Vec::new();
         Self::scan_tokens(tokens, &mut path, &mut modules);
         Ok(Self { modules, lines })
     }
-    pub fn path_at_offset(&self, offset: usize) -> Option<&syn::Path> {
+    pub fn path_at_offset(&self, offset: usize) -> Option<syn::Path> {
         self.modules
             .range(..=offset)
             .next_back()
-            .map(|(_, path)| path)
+            .map(|(_, components)| Self::path_from_components(components))
     }
 
-    pub fn path_at_line_column(&self, line: usize, column: usize) -> Option<&syn::Path> {
+    pub fn path_at_line_column(&self, line: usize, column: usize) -> Option<syn::Path> {
         self.path_at_offset(self.byte_offset(line, column)?)
     }
 
@@ -201,7 +200,7 @@ impl ModInfo {
     fn scan_tokens(
         tokens: TokenStream,
         path: &mut Vec<proc_macro2::Ident>,
-        modules: &mut BTreeMap<usize, syn::Path>,
+        modules: &mut BTreeMap<usize, Vec<String>>,
     ) {
         let mut iter = tokens.into_iter().peekable();
 
@@ -228,13 +227,13 @@ impl ModInfo {
 
                         let after_open = group.span_open().byte_range().end;
                         path.push(name);
-                        modules.insert(after_open, Self::path_from_idents(path));
+                        modules.insert(after_open, Self::components_from_idents(path));
 
                         Self::scan_tokens(group.stream(), path, modules);
 
                         path.pop();
                         let after_close = group.span_close().byte_range().end;
-                        modules.insert(after_close, Self::path_from_idents(path));
+                        modules.insert(after_close, Self::components_from_idents(path));
                     }
                 }
                 TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
@@ -245,11 +244,20 @@ impl ModInfo {
         }
     }
 
-    fn path_from_idents(idents: &[proc_macro2::Ident]) -> syn::Path {
+    fn components_from_idents(idents: &[proc_macro2::Ident]) -> Vec<String> {
+        idents.iter().map(|ident| ident.to_string()).collect()
+    }
+
+    fn path_from_components(components: &[String]) -> syn::Path {
         let mut segments = syn::punctuated::Punctuated::<syn::PathSegment, syn::Token![::]>::new();
-        for ident in idents {
+        for component in components {
+            let ident = if let Some(raw) = component.strip_prefix("r#") {
+                syn::Ident::new_raw(raw, Span::call_site())
+            } else {
+                syn::Ident::new(component, Span::call_site())
+            };
             segments.push(syn::PathSegment {
-                ident: ident.clone(),
+                ident,
                 arguments: syn::PathArguments::None,
             });
         }
