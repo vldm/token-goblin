@@ -1,5 +1,3 @@
-use token_goblin::spit;
-
 #[token_goblin::munch]
 pub fn add(mut input: TokenStream) -> TokenStream {
     use std::str::FromStr;
@@ -31,6 +29,8 @@ fn test_add() {
 
 #[test]
 fn test_spit_derive() {
+    use token_goblin::spit;
+
     assert!(FOO.contains("struct MyStruct"));
     assert!(FOO.contains("pub x : i32"));
 

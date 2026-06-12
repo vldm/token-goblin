@@ -10,8 +10,12 @@ use crate::{Result, metadata, metadata::targets, path};
 
 pub struct SpanLocation {
     pub fs_workspace_root: PathBuf,
-    pub fs_crate_root: PathBuf,
-    /// Path from crate root to the current module file
+    pub fs_crate_manifest_dir: PathBuf,
+    /// Absolute directory where the active target resolves modules from.
+    pub fs_target_root: PathBuf,
+    /// Absolute path to the active target entrypoint file.
+    pub fs_target_root_file: PathBuf,
+    /// Path from target root dir to the current module file.
     pub fs_module_path: PathBuf,
     /// File-derived module path relative to the active target root.
     pub target_module_path: syn::Path,
@@ -21,15 +25,23 @@ pub struct SpanLocation {
 impl SpanLocation {
     /// Construct `SpanLocation` info from proc-macro span.
     /// This function will effectively:
-    /// - get crate root path from `CARGO_MANIFEST_DIR`
+    /// - get manifest dir from `CARGO_MANIFEST_DIR`
     /// - resolve the active Cargo target entrypoint for the span file
     /// - reparse the span file with a simplified parser to extract inline module information
     pub fn recover(span: proc_macro::Span) -> Result<Self> {
-        let fs_crate_root = Self::get_crate_root_path()?;
+        let fs_crate_manifest_dir =
+            Self::get_crate_manifest_dir()?
+                .canonicalize()
+                .map_err(|e| {
+                    error!(
+                        Span::call_site() =>
+                        "SpanLocation: failed to canonicalize manifest dir: {e}"
+                    )
+                })?;
         let manifest_path = path::manifest_path()?;
         let fs_workspace_root = metadata::workspace_root_for_manifest(&manifest_path)?;
         debug!("workspace_path: {}", fs_workspace_root.display());
-        debug!("fs_crate_root: {}", fs_crate_root.display());
+        debug!("fs_crate_manifest_dir: {}", fs_crate_manifest_dir.display());
 
         let fs_module_path_absolute_or_relative = span
             .local_file()
@@ -39,25 +51,40 @@ impl SpanLocation {
             "fs_module_path_absolute_or_relative: {}",
             fs_module_path_absolute_or_relative.display()
         );
-        let fs_module_path = Self::get_module_path(
+        let module_file = Self::resolve_module_absolute(
             &fs_workspace_root,
-            &fs_crate_root,
             &fs_module_path_absolute_or_relative,
-        )
-        .map_err(|e| error!(Span::call_site() => "SpanLocation: Failed to get module path: {e}"))?;
+        )?;
 
-        let discovered = targets::TargetRoot::discover(&manifest_path, &fs_crate_root)?;
-        let target = targets::TargetRoot::select_for_file(&discovered, &fs_module_path)?;
+        let discovered = targets::TargetRoot::discover(&manifest_path, &fs_crate_manifest_dir)?;
+        let target = targets::TargetRoot::select_for_file(&discovered, &module_file)?;
+        let fs_target_root = target.module_dir.clone();
+        let fs_target_root_file = target.root_file.clone();
         debug!(
-            "active target: {:?} root={} module_dir={}",
+            "active target: {:?} root={} target_root={}",
             target.kind,
-            target.root_file.display(),
-            target.module_dir.display()
+            fs_target_root_file.display(),
+            fs_target_root.display()
         );
 
-        let target_module_path = target.file_module_path(&fs_module_path);
-        let fs_module_absolute = fs_crate_root.join(&fs_module_path);
-        let mod_info = ModInfo::micro_parse_file(&fs_module_absolute)?;
+        let fs_module_path = if module_file == fs_target_root_file {
+            PathBuf::new()
+        } else {
+            module_file
+                .strip_prefix(&fs_target_root)
+                .map(targets::normalize_path)
+                .map_err(|_| {
+                    error!(
+                        Span::call_site() =>
+                        "SpanLocation: `{}` is not under target root `{}`",
+                        module_file.display(),
+                        fs_target_root.display()
+                    )
+                })?
+        };
+
+        let target_module_path = target.file_module_path(&module_file);
+        let mod_info = ModInfo::micro_parse_file(&module_file)?;
         let module_path_postfix = mod_info
             .path_at_line_column(span.line(), span.column())
             .ok_or_else(
@@ -65,43 +92,46 @@ impl SpanLocation {
             )?;
         Ok(Self {
             fs_workspace_root,
-            fs_crate_root,
+            fs_crate_manifest_dir,
+            fs_target_root,
+            fs_target_root_file,
             fs_module_path,
             target_module_path,
             module_path_postfix,
         })
     }
 
-    /// Return path to module relative to crate root.
-    fn get_module_path(
+    fn resolve_module_absolute(
         fs_workspace_root: &Path,
-        fs_crate_root: &Path,
         fs_module_path_absolute_or_relative: &Path,
-    ) -> Result<PathBuf, std::io::Error> {
+    ) -> Result<PathBuf> {
         let fs_module_path_absolute = fs_workspace_root.join(fs_module_path_absolute_or_relative);
         debug!(
             "fs_module_path_absolute: {}",
             fs_module_path_absolute.display()
         );
-        let fs_module_path_absolute = fs_module_path_absolute.canonicalize()?;
-
-        let fs_module_path = fs_module_path_absolute
-            .strip_prefix(fs_crate_root)
-            .map_err(std::io::Error::other)?;
-        Ok(targets::normalize_path(fs_module_path))
+        fs_module_path_absolute.canonicalize().map_err(|e| {
+            error!(Span::call_site() => "SpanLocation: failed to canonicalize module path `{}`: {e}", fs_module_path_absolute.display())
+        })
     }
     /// Convert location to rust compatible module path relative to the active target root.
     pub fn module_path(&self) -> syn::Path {
         join_paths(&self.target_module_path, &self.module_path_postfix)
     }
+
+    /// Absolute path to the current module file.
     pub fn file_path(&self) -> PathBuf {
-        self.fs_crate_root.join(&self.fs_module_path)
+        if self.fs_module_path.as_os_str().is_empty() {
+            self.fs_target_root_file.clone()
+        } else {
+            self.fs_target_root.join(&self.fs_module_path)
+        }
     }
 
-    fn get_crate_root_path() -> Result<PathBuf> {
-        let crate_root = std::env::var("CARGO_MANIFEST_DIR")
+    fn get_crate_manifest_dir() -> Result<PathBuf> {
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
             .map_err(|_| error!(Span::call_site() => "CARGO_MANIFEST_DIR is not set"))?;
-        Ok(PathBuf::from(crate_root))
+        Ok(PathBuf::from(manifest_dir))
     }
 }
 

@@ -12,7 +12,10 @@ use std::path::{Component, Path, PathBuf};
 
 use proc_macro2::Span;
 
-use crate::{Result, path::{manifest_path, search_for_parent_manifest}};
+use crate::{
+    Result,
+    path::{manifest_path, search_for_parent_manifest},
+};
 type TomlTable = toml::map::Map<String, toml::Value>;
 
 /// Normalize a Cargo target/package name to rustc crate name form (`-` → `_`).
@@ -209,9 +212,9 @@ fn is_crate_in_workspace(
     let crate_root = canonicalize_lossy(crate_root);
     let workspace_root = canonicalize_lossy(workspace_root);
 
-    let relative_path = crate_root
-        .strip_prefix(&workspace_root)
-        .map_err(|_| error!(Span::call_site() => "Failed to compute crate path relative to workspace"))?;
+    let relative_path = crate_root.strip_prefix(&workspace_root).map_err(
+        |_| error!(Span::call_site() => "Failed to compute crate path relative to workspace"),
+    )?;
     let relative_path = normalize_relative_path(relative_path);
 
     let exclude = string_array(workspace_table.get("exclude"));
@@ -285,9 +288,7 @@ fn wildcard_match(pattern: &str, text: &str) -> bool {
         match (pattern.first(), text.first()) {
             (None, None) => true,
             (Some(b'*'), None) => match_at(&pattern[1..], text),
-            (Some(b'*'), Some(_)) => {
-                match_at(pattern, &text[1..]) || match_at(&pattern[1..], text)
-            }
+            (Some(b'*'), Some(_)) => match_at(pattern, &text[1..]) || match_at(&pattern[1..], text),
             (Some(b'?'), Some(_)) => match_at(&pattern[1..], &text[1..]),
             (Some(p), Some(t)) if p == t => match_at(&pattern[1..], &text[1..]),
             _ => false,

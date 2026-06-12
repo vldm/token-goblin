@@ -85,6 +85,10 @@ pub struct Config {
 /// Arguments to `Spit` derive macro.
 /// provided as extra attributes: `#[charm(path_to_macro)]`
 /// ```
+/// # macro_rules! path_to_macro {
+/// #   ($($tt:tt)*) => { }
+/// # }
+///
 /// #[derive(token_goblin::Spit)]
 /// #[charm(path_to_macro)]
 /// struct MyStruct {

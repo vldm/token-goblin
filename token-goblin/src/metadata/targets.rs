@@ -25,7 +25,9 @@ pub enum TargetKind {
 pub struct TargetRoot {
     pub kind: TargetKind,
     pub crate_name: String,
+    /// Absolute path to the target entrypoint source file.
     pub root_file: PathBuf,
+    /// Absolute directory where this target resolves modules from.
     pub module_dir: PathBuf,
 }
 
@@ -48,13 +50,14 @@ impl TargetRoot {
             );
             let root_file =
                 table_path(lib.get("path")).unwrap_or_else(|| PathBuf::from("src/lib.rs"));
-            targets.push(Self::new(TargetKind::Lib, name, &root_file));
+            targets.push(Self::new(TargetKind::Lib, name, &root_file, crate_root)?);
         } else if crate_root.join("src/lib.rs").is_file() {
             targets.push(Self::new(
                 TargetKind::Lib,
                 default_crate_name.clone(),
                 "src/lib.rs".as_ref(),
-            ));
+                crate_root,
+            )?);
         }
 
         if manifest_bool(&manifest, "autobins", true) {
@@ -63,7 +66,8 @@ impl TargetRoot {
                     TargetKind::Bin,
                     default_crate_name.clone(),
                     "src/main.rs".as_ref(),
-                ));
+                    crate_root,
+                )?);
             }
             collect_auto_roots(crate_root, "src/bin", TargetKind::Bin, &mut targets)?;
         }
@@ -73,13 +77,21 @@ impl TargetRoot {
             "bin",
             TargetKind::Bin,
             &mut targets,
+            crate_root,
             Some("src/main.rs"),
         )?;
 
         if manifest_bool(&manifest, "autotests", true) {
             collect_auto_roots(crate_root, "tests", TargetKind::Test, &mut targets)?;
         }
-        collect_explicit_targets(&manifest, "test", TargetKind::Test, &mut targets, None)?;
+        collect_explicit_targets(
+            &manifest,
+            "test",
+            TargetKind::Test,
+            &mut targets,
+            crate_root,
+            None,
+        )?;
 
         if manifest_bool(&manifest, "autoexamples", true) {
             collect_auto_roots(crate_root, "examples", TargetKind::Example, &mut targets)?;
@@ -89,30 +101,59 @@ impl TargetRoot {
             "example",
             TargetKind::Example,
             &mut targets,
+            crate_root,
             None,
         )?;
 
         if manifest_bool(&manifest, "autobenches", true) {
             collect_auto_roots(crate_root, "benches", TargetKind::Bench, &mut targets)?;
         }
-        collect_explicit_targets(&manifest, "bench", TargetKind::Bench, &mut targets, None)?;
+        collect_explicit_targets(
+            &manifest,
+            "bench",
+            TargetKind::Bench,
+            &mut targets,
+            crate_root,
+            None,
+        )?;
 
         dedupe_targets(&mut targets);
         Ok(targets)
     }
 
-    pub fn new(kind: TargetKind, crate_name: String, root_file: &Path) -> Self {
-        let module_dir = module_dir_for_root(root_file);
-        Self {
+    pub fn new(
+        kind: TargetKind,
+        crate_name: String,
+        root_file: &Path,
+        crate_root: &Path,
+    ) -> Result<Self> {
+        let root_file = resolve_root_file(crate_root, root_file);
+        let root_file = root_file.canonicalize().map_err(|e| {
+            error!(
+                Span::call_site() =>
+                "SpanLocation: failed to canonicalize target root `{}`: {e}",
+                root_file.display()
+            )
+        })?;
+        let module_dir = root_file
+            .parent()
+            .map_or_else(|| crate_root.to_path_buf(), Path::to_path_buf);
+        Ok(Self {
             kind,
             crate_name,
-            root_file: normalize_path(root_file),
+            root_file,
             module_dir,
-        }
+        })
     }
 
     pub fn select_for_file<'a>(targets: &'a [Self], module_file: &Path) -> Result<&'a Self> {
-        let module_file = normalize_path(module_file);
+        let module_file = module_file.canonicalize().map_err(|e| {
+            error!(
+                Span::call_site() =>
+                "SpanLocation: failed to canonicalize module file `{}`: {e}",
+                module_file.display()
+            )
+        })?;
         let env = TargetEnv::from_process();
 
         let mut candidates: Vec<&Self> = targets
@@ -120,16 +161,15 @@ impl TargetRoot {
             .filter(|target| target.contains_file(&module_file, targets))
             .collect();
 
-        if let Some(crate_name) = &env.crate_name {
-            candidates.retain(|target| &target.crate_name == crate_name);
-        }
-
         if let Some(bin_name) = &env.bin_name {
             candidates.retain(|target| {
                 matches!(target.kind, TargetKind::Bin | TargetKind::Example)
                     && target.crate_name == *bin_name
             });
         } else {
+            if let Some(crate_name) = &env.crate_name {
+                candidates.retain(|target| &target.crate_name == crate_name);
+            }
             candidates
                 .retain(|target| !matches!(target.kind, TargetKind::Bin | TargetKind::Example));
         }
@@ -193,7 +233,7 @@ impl TargetRoot {
         }
         let relative = module_file
             .strip_prefix(&self.module_dir)
-            .unwrap_or(module_file);
+            .unwrap_or(module_file.as_ref());
         module_path_from_relative(relative)
     }
 }
@@ -210,8 +250,18 @@ impl TargetEnv {
             crate_name: std::env::var("CARGO_CRATE_NAME")
                 .ok()
                 .map(|name| cargo_crate_name(&name)),
-            bin_name: std::env::var("CARGO_BIN_NAME").ok(),
+            bin_name: std::env::var("CARGO_BIN_NAME")
+                .ok()
+                .map(|name| cargo_crate_name(&name)),
         }
+    }
+}
+
+fn resolve_root_file(crate_root: &Path, root_file: &Path) -> PathBuf {
+    if root_file.is_absolute() {
+        root_file.to_path_buf()
+    } else {
+        crate_root.join(root_file)
     }
 }
 
@@ -220,6 +270,7 @@ fn collect_explicit_targets(
     table_key: &str,
     kind: TargetKind,
     targets: &mut Vec<TargetRoot>,
+    crate_root: &Path,
     default: Option<&'static str>,
 ) -> Result<()> {
     let Some(entries) = manifest.get(table_key).and_then(Value::as_array) else {
@@ -241,7 +292,7 @@ fn collect_explicit_targets(
                     "[[{table_key}]] entry missing path"
                 )
             })?;
-        targets.push(TargetRoot::new(kind, name, &root_file));
+        targets.push(TargetRoot::new(kind, name, &root_file, crate_root)?);
     }
     Ok(())
 }
@@ -270,7 +321,7 @@ fn collect_auto_roots(
                 .and_then(OsStr::to_str)
                 .map(cargo_crate_name)
                 .unwrap_or_default();
-            targets.push(TargetRoot::new(kind, name, &normalize_path(rel)));
+            targets.push(TargetRoot::new(kind, name, rel, crate_root)?);
             continue;
         }
 
@@ -283,7 +334,7 @@ fn collect_auto_roots(
                     .and_then(OsStr::to_str)
                     .map(cargo_crate_name)
                     .unwrap_or_default();
-                targets.push(TargetRoot::new(kind, name, &normalize_path(rel)));
+                targets.push(TargetRoot::new(kind, name, rel, crate_root)?);
             }
         }
     }
@@ -293,12 +344,6 @@ fn collect_auto_roots(
 fn dedupe_targets(targets: &mut Vec<TargetRoot>) {
     targets.sort_by(|left, right| left.root_file.cmp(&right.root_file));
     targets.dedup_by(|left, right| left.root_file == right.root_file);
-}
-
-fn module_dir_for_root(root_file: &Path) -> PathBuf {
-    root_file
-        .parent()
-        .map_or_else(|| PathBuf::from("."), normalize_path)
 }
 
 pub(crate) fn normalize_path(path: &Path) -> PathBuf {
@@ -323,9 +368,14 @@ fn table_string(value: Option<&toml::Value>) -> Option<String> {
 }
 
 fn table_path(value: Option<&toml::Value>) -> Option<PathBuf> {
-    value
-        .and_then(|v| v.as_str())
-        .map(|path| normalize_path(Path::new(path)))
+    value.and_then(|v| v.as_str()).map(|path| {
+        let path = Path::new(path);
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            normalize_path(path)
+        }
+    })
 }
 
 pub(crate) fn module_path_from_relative(relative: &Path) -> syn::Path {
@@ -395,18 +445,68 @@ mod tests {
     }
 
     #[test]
+    fn absolute_bin_target_root_file_stays_absolute() {
+        let fixture_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/tests/trybuild-pass-emul");
+        let external = fixture_root.join("../module_visibility_pass.rs");
+        if !external.is_file() {
+            return;
+        }
+
+        let absolute = external.canonicalize().expect("canonicalize external file");
+        let target = TargetRoot::new(
+            TargetKind::Bin,
+            "demo".to_string(),
+            &absolute,
+            &fixture_root,
+        )
+        .expect("absolute bin root");
+        assert_eq!(target.root_file, absolute);
+    }
+
+    #[test]
+    fn select_for_file_matches_absolute_trybuild_bin() {
+        let fixture_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/tests/trybuild-pass-emul");
+        let manifest = fixture_root.join("Cargo.toml");
+        let external = fixture_root.join("../module_visibility_pass.rs");
+        if !manifest.is_file() || !external.is_file() {
+            return;
+        }
+
+        let external = external.canonicalize().expect("canonicalize external file");
+        let crate_root = fixture_root
+            .canonicalize()
+            .expect("canonicalize fixture root");
+        let targets = TargetRoot::discover(&manifest, &crate_root).expect("discover targets");
+        let target = TargetRoot::select_for_file(&targets, &external).expect("select target");
+        assert_eq!(target.root_file, external);
+        assert!(target.file_module_path(&external).segments.is_empty());
+    }
+
+    #[test]
     fn target_root_file_module_path_is_empty() {
-        let target = TargetRoot::new(TargetKind::Lib, "demo".to_string(), "src/lib.rs".as_ref());
-        assert!(
-            target
-                .file_module_path(Path::new("src/lib.rs"))
-                .segments
-                .is_empty()
-        );
-        assert_eq!(
-            path_display(&target.file_module_path(Path::new("src/nested/mod.rs"))),
-            "nested"
-        );
+        let crate_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let lib = crate_root.join("src/lib.rs");
+        if !lib.is_file() {
+            return;
+        }
+        let target = TargetRoot::new(
+            TargetKind::Lib,
+            "demo".to_string(),
+            "src/lib.rs".as_ref(),
+            &crate_root,
+        )
+        .unwrap();
+        let lib = lib.canonicalize().unwrap();
+        assert!(target.file_module_path(&lib).segments.is_empty());
+        let nested = crate_root.join("src/nested/mod.rs");
+        if nested.is_file() {
+            assert_eq!(
+                path_display(&target.file_module_path(&nested.canonicalize().unwrap())),
+                "nested"
+            );
+        }
     }
 
     #[test]
@@ -419,14 +519,15 @@ mod tests {
         }
 
         let targets = TargetRoot::discover(&manifest, &fixture_root).expect("discover targets");
-        let roots: Vec<_> = targets
-            .iter()
-            .map(|target| target.root_file.clone())
-            .collect();
-        assert!(roots.contains(&PathBuf::from("src/lib.rs")));
-        assert!(roots.contains(&PathBuf::from("src/main.rs")));
-        assert!(roots.contains(&PathBuf::from("tests/integration.rs")));
-        assert!(roots.contains(&PathBuf::from("examples/demo.rs")));
-        assert!(roots.contains(&PathBuf::from("benches/bench.rs")));
+        let ends_with = |suffix: &str| {
+            targets
+                .iter()
+                .any(|target| target.root_file.ends_with(suffix))
+        };
+        assert!(ends_with("src/lib.rs"));
+        assert!(ends_with("src/main.rs"));
+        assert!(ends_with("tests/integration.rs"));
+        assert!(ends_with("examples/demo.rs"));
+        assert!(ends_with("benches/bench.rs"));
     }
 }

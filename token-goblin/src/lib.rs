@@ -33,7 +33,7 @@ pub(crate) const PRINT_TIMINGS: bool = cfg!(token_goblin_print_timings);
 /// (Also requires `DEBUG` to be enabled)
 ///
 /// Internal only feature, not exposed to the user.
-pub(crate) const DEBUG_ENV: bool = true;
+pub(crate) const DEBUG_ENV: bool = false;
 
 /// Internal feature that prevent cache checking for dylib.
 pub(crate) const NO_CACHE: bool = false;
@@ -103,6 +103,9 @@ pub fn snif(input: TokenStream) -> TokenStream {
 /// Adaptor to function-like macro, that allows using them as derive macro.
 ///
 /// ```
+/// # macro_rules! path_to_macro {
+/// #   ($($tt:tt)*) => { }
+/// # }
 /// #[derive(token_goblin::Spit)]
 /// #[charm(path_to_macro)]
 /// struct MyStruct {
@@ -110,6 +113,14 @@ pub fn snif(input: TokenStream) -> TokenStream {
 /// }
 /// ```
 /// will expand to:
+/// ```
+/// # macro_rules! path_to_macro {
+/// #   ($($tt:tt)*) => { }
+/// # }
+/// struct MyStruct {
+///   field: i32,
+/// }
+/// path_to_macro!(MyStruct { field: 42 });
 /// ```
 #[proc_macro_derive(Spit, attributes(charm))]
 pub fn spit_derive(input: TokenStream) -> TokenStream {

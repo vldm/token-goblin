@@ -1,0 +1,17 @@
+[workspace]
+
+[package]
+name = "module-path-fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "module_path_fixture"
+path = "src/lib.rs"
+
+[[bin]]
+name = "module_path_fixture"
+path = "src/main.rs"
+
+[dependencies]
+token-goblin = { path = "../../../token-goblin" }

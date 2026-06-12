@@ -86,10 +86,7 @@ fn module_path_for_alias(expanded: &str, alias: &str) -> String {
         .to_string()
 }
 
-fn assert_module_paths(
-    expanded: &str,
-    expected: &[(&str, &str)],
-) {
+fn assert_module_paths(expanded: &str, expected: &[(&str, &str)]) {
     for (alias, expected_path) in expected {
         assert_eq!(
             module_path_for_alias(expanded, alias),
@@ -99,7 +96,11 @@ fn assert_module_paths(
     }
 }
 
-fn run_cargo_in_fixture(manifest: &PathBuf, fixture_dir: &PathBuf, args: &[&str]) -> std::process::Output {
+fn run_cargo_in_fixture(
+    manifest: &PathBuf,
+    fixture_dir: &PathBuf,
+    args: &[&str],
+) -> std::process::Output {
     let mut command = Command::new("cargo");
     command.current_dir(fixture_dir);
     for arg in args {
@@ -165,7 +166,7 @@ fn module_visibility_ui() {
 }
 
 #[test]
-fn trybuild_pass_emul_reproduces_span_location_panic() {
+fn trybuild_pass_emul_builds_external_bin() {
     let fixture_dir = trybuild_pass_emul_dir();
     let manifest = trybuild_pass_emul_manifest();
     assert!(
@@ -182,17 +183,19 @@ fn trybuild_pass_emul_reproduces_span_location_panic() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    eprintln!("stdout:\n{stdout}");
-    eprintln!("stderr:\n{stderr}");
+    if !output.status.success() {
+        eprintln!("stdout:\n{stdout}");
+        eprintln!("stderr:\n{stderr}");
+    }
 
     assert!(
-        !output.status.success(),
-        "expected build to fail while reproducing trybuild pass panic"
+        output.status.success(),
+        "expected external trybuild-style bin to build successfully"
     );
     let combined = format!("{stdout}{stderr}");
     assert!(
-        combined.contains("prefix not found") || combined.contains("custom attribute panicked"),
-        "expected SpanLocation panic, got:\n{combined}"
+        !combined.contains("prefix not found") && !combined.contains("custom attribute panicked"),
+        "unexpected SpanLocation failure:\n{combined}"
     );
 }
 
@@ -229,10 +232,7 @@ fn module_path_fixture_expand_output() {
     );
 
     let test = run_cargo_expand(&manifest, &fixture_dir, &["--test", "integration"]);
-    assert_module_paths(
-        &test,
-        &[("test_root", ""), ("test_nested", "nested")],
-    );
+    assert_module_paths(&test, &[("test_root", ""), ("test_nested", "nested")]);
 
     let example = run_cargo_expand(&manifest, &fixture_dir, &["--example", "demo"]);
     assert_module_paths(&example, &[("example_root", "")]);
