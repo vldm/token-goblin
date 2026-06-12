@@ -1,30 +1,33 @@
 #![allow(unused)]
 use std::{
     collections::BTreeMap,
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
 };
 
 use proc_macro2::{Delimiter, Span, TokenStream, TokenTree};
 
-use crate::{Result, metadata, path};
+use crate::{Result, metadata, metadata::targets, path};
 
 pub struct SpanLocation {
     pub fs_workspace_root: PathBuf,
     pub fs_crate_root: PathBuf,
     /// Path from crate root to the current module file
     pub fs_module_path: PathBuf,
-    /// Extra parts of module path, that are not part of the file path.
+    /// File-derived module path relative to the active target root.
+    pub target_module_path: syn::Path,
+    /// Extra parts of module path from inline `mod {}` blocks in the current file.
     pub module_path_postfix: syn::Path,
 }
 impl SpanLocation {
     /// Construct `SpanLocation` info from proc-macro span.
     /// This function will effectively:
-    /// - get crate root path from `CARGO_MANIFEST_PATH`
-    /// - get module path from `local_file()`
-    /// - reparse `local_file()` with simplified parser, that will extract extra module information.
+    /// - get crate root path from `CARGO_MANIFEST_DIR`
+    /// - resolve the active Cargo target entrypoint for the span file
+    /// - reparse the span file with a simplified parser to extract inline module information
     pub fn recover(span: proc_macro::Span) -> Result<Self> {
         let fs_crate_root = Self::get_crate_root_path()?;
-        let fs_workspace_root = metadata::workspace_root_for_manifest(&path::manifest_path()?)?;
+        let manifest_path = path::manifest_path()?;
+        let fs_workspace_root = metadata::workspace_root_for_manifest(&manifest_path)?;
         debug!("workspace_path: {}", fs_workspace_root.display());
         debug!("fs_crate_root: {}", fs_crate_root.display());
 
@@ -43,7 +46,18 @@ impl SpanLocation {
         )
         .map_err(|e| error!(Span::call_site() => "SpanLocation: Failed to get module path: {e}"))?;
 
-        let mod_info = ModInfo::micro_parse_file(&fs_module_path_absolute_or_relative)?;
+        let discovered = targets::TargetRoot::discover(&manifest_path, &fs_crate_root)?;
+        let target = targets::TargetRoot::select_for_file(&discovered, &fs_module_path)?;
+        debug!(
+            "active target: {:?} root={} module_dir={}",
+            target.kind,
+            target.root_file.display(),
+            target.module_dir.display()
+        );
+
+        let target_module_path = target.file_module_path(&fs_module_path);
+        let fs_module_absolute = fs_crate_root.join(&fs_module_path);
+        let mod_info = ModInfo::micro_parse_file(&fs_module_absolute)?;
         let module_path_postfix = mod_info
             .path_at_line_column(span.line(), span.column())
             .ok_or_else(
@@ -53,6 +67,7 @@ impl SpanLocation {
             fs_workspace_root,
             fs_crate_root,
             fs_module_path,
+            target_module_path,
             module_path_postfix,
         })
     }
@@ -73,58 +88,11 @@ impl SpanLocation {
         let fs_module_path = fs_module_path_absolute
             .strip_prefix(fs_crate_root)
             .map_err(std::io::Error::other)?;
-        Ok(fs_module_path.to_path_buf())
+        Ok(targets::normalize_path(fs_module_path))
     }
-    /// Convert location to rust compatible module path.
+    /// Convert location to rust compatible module path relative to the active target root.
     pub fn module_path(&self) -> syn::Path {
-        // fs_module_path to syn::Path
-        // join with module_path_postfix
-        let mut result = syn::Path {
-            leading_colon: None,
-            segments: syn::punctuated::Punctuated::new(),
-        };
-        let file = self.fs_module_path.extension();
-
-        let mut components = self.fs_module_path.components();
-        while let Some(Component::Normal(component)) = components.next() {
-            if component.eq_ignore_ascii_case("mod.rs") {
-                break;
-            }
-            let is_rs = std::path::Path::new(&component)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("rs"));
-
-            let component_str = component.to_string_lossy().replace('-', "_");
-
-            let mod_part = if is_rs {
-                &component_str[..component_str.len() - 3]
-            } else {
-                &component_str
-            };
-
-            result.segments.push(syn::PathSegment {
-                ident: syn::Ident::new(mod_part, Span::call_site()),
-                arguments: syn::PathArguments::None,
-            });
-
-            // .rs should be last part
-            if is_rs {
-                break;
-            }
-        }
-
-        assert!(
-            components.next().is_none(),
-            "BUG: fs_module_path has unexpected part {:?} in {}",
-            components,
-            self.fs_module_path.display()
-        );
-
-        // extend with module_path_postfix
-        for segment in &self.module_path_postfix.segments {
-            result.segments.push(segment.clone());
-        }
-        result
+        join_paths(&self.target_module_path, &self.module_path_postfix)
     }
     pub fn file_path(&self) -> PathBuf {
         self.fs_crate_root.join(&self.fs_module_path)
@@ -134,6 +102,36 @@ impl SpanLocation {
         let crate_root = std::env::var("CARGO_MANIFEST_DIR")
             .map_err(|_| error!(Span::call_site() => "CARGO_MANIFEST_DIR is not set"))?;
         Ok(PathBuf::from(crate_root))
+    }
+}
+
+fn path_from_segment_strs(segments: &[String]) -> syn::Path {
+    let mut result = syn::punctuated::Punctuated::<syn::PathSegment, syn::Token![::]>::new();
+    for segment in segments {
+        let ident = if let Some(raw) = segment.strip_prefix("r#") {
+            syn::Ident::new_raw(raw, Span::call_site())
+        } else {
+            syn::Ident::new(segment, Span::call_site())
+        };
+        result.push(syn::PathSegment {
+            ident,
+            arguments: syn::PathArguments::None,
+        });
+    }
+    syn::Path {
+        leading_colon: None,
+        segments: result,
+    }
+}
+
+fn join_paths(left: &syn::Path, right: &syn::Path) -> syn::Path {
+    let mut segments = left.segments.clone();
+    for segment in &right.segments {
+        segments.push(segment.clone());
+    }
+    syn::Path {
+        leading_colon: None,
+        segments,
     }
 }
 
@@ -173,7 +171,7 @@ impl ModInfo {
         self.modules
             .range(..=offset)
             .next_back()
-            .map(|(_, components)| Self::path_from_components(components))
+            .map(|(_, components)| path_from_segment_strs(components))
     }
 
     pub fn path_at_line_column(&self, line: usize, column: usize) -> Option<syn::Path> {
@@ -244,25 +242,6 @@ impl ModInfo {
 
     fn components_from_idents(idents: &[proc_macro2::Ident]) -> Vec<String> {
         idents.iter().map(ToString::to_string).collect()
-    }
-
-    fn path_from_components(components: &[String]) -> syn::Path {
-        let mut segments = syn::punctuated::Punctuated::<syn::PathSegment, syn::Token![::]>::new();
-        for component in components {
-            let ident = if let Some(raw) = component.strip_prefix("r#") {
-                syn::Ident::new_raw(raw, Span::call_site())
-            } else {
-                syn::Ident::new(component, Span::call_site())
-            };
-            segments.push(syn::PathSegment {
-                ident,
-                arguments: syn::PathArguments::None,
-            });
-        }
-        syn::Path {
-            leading_colon: None,
-            segments,
-        }
     }
 }
 

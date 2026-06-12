@@ -13,7 +13,7 @@ use std::str::FromStr;
 
 use proc_macro2::{Span, TokenStream};
 
-use crate::{Result, path, rustc_meta, span_recovery};
+use crate::{Result, metadata::cargo_crate_name, path, rustc_meta, span_recovery};
 
 /// Cargo build profile for the generated dylib crate.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -124,11 +124,6 @@ impl GeneratedCrate {
 #[derive(Clone, Debug)]
 pub struct DylibBuild {
     pub dylib_path: PathBuf,
-}
-
-/// Normalize a Cargo package name to the library artifact stem (`-` → `_`).
-pub fn cargo_crate_name(package_name: &str) -> String {
-    package_name.replace('-', "_")
 }
 
 /// Resolve the dylib filename for a package name at the current platform.

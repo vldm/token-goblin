@@ -13,6 +13,7 @@ use quote::{format_ident, quote};
 
 use crate::{
     macro_impl::{Config, Lazieness},
+    metadata::cargo_crate_name,
     template::TemplateContext,
 };
 
@@ -36,7 +37,7 @@ fn format_ide_helper_mod(template_context: &TemplateContext) -> TokenStream {
         .dependencies
         .iter()
         .map(|dep| {
-            let name = dep.name.replace('-', "_");
+            let name = cargo_crate_name(&dep.name);
             let name = format_ident!("{}", name);
 
             quote! {

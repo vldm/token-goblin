@@ -6,12 +6,19 @@
 //!    try to find parent workspace `Cargo.toml` and fill information from it.
 //!
 
+pub mod targets;
+
 use std::path::{Component, Path, PathBuf};
 
 use proc_macro2::Span;
 
 use crate::{Result, path::{manifest_path, search_for_parent_manifest}};
 type TomlTable = toml::map::Map<String, toml::Value>;
+
+/// Normalize a Cargo target/package name to rustc crate name form (`-` → `_`).
+pub fn cargo_crate_name(name: &str) -> String {
+    name.replace('-', "_")
+}
 
 // Whether value set, or uses workspace version
 #[derive(Debug)]
@@ -290,7 +297,7 @@ fn wildcard_match(pattern: &str, text: &str) -> bool {
     match_at(pattern.as_bytes(), text.as_bytes())
 }
 
-fn read_toml_file(path: &Path) -> Result<toml::Value> {
+pub(crate) fn read_toml_file(path: &Path) -> Result<toml::Value> {
     let val = std::fs::read_to_string(path)
         .map_err(|e| error!(Span::call_site() => "Failed to read TOML file: {e}"))?;
     toml::from_str(&val).map_err(|e| error!(Span::call_site() => "Failed to parse TOML file: {e}"))
