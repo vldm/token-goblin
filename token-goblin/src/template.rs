@@ -196,10 +196,10 @@ fn render_dependencies(metadata: &Metadata) -> Result<String> {
 fn render_dependency(dep: &Dependency) -> Result<String> {
     match &dep.value {
         ValueOrWorkspace::Value(value) => render_value_dependency(&dep.name, value, &dep.rel_path),
-        ValueOrWorkspace::Workspace { .. } => Err(error!(
+        ValueOrWorkspace::Workspace { .. } => bail!(
             "dependency `{}` still uses unresolved workspace inheritance",
             dep.name
-        )),
+        ),
     }
 }
 
@@ -231,7 +231,7 @@ fn rewrite_dependency_paths(
         return Ok(value);
     };
     let Some(path) = path.as_str() else {
-        return Err(error!("dependency `{name}` path must be a string"));
+        bail!("dependency `{name}` path must be a string");
     };
 
     let absolute = manifest_dir.join(path);
@@ -264,10 +264,7 @@ fn render_file(path: &Path, context: &TemplateContext) -> Result<String> {
             "entries" => push_fragment(&mut out, &context.entries()),
             "content" => push_fragment(&mut out, &context.content()),
             other => {
-                return Err(error!(
-                    "unknown stencil marker `{other}` in {}",
-                    path.display()
-                ));
+                bail!("unknown stencil marker `{other}` in {}", path.display());
             }
         }
     }

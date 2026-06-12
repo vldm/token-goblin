@@ -56,7 +56,7 @@ pub fn search_for_parent_manifest<U>(
         }
     }
 
-    Err(error!(Span::call_site() => "No parent directory found"))
+    bail!(Span::call_site() => "No parent directory found")
 }
 
 /// Use source span to request path of macro definition.

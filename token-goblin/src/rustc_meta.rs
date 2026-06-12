@@ -13,12 +13,12 @@ pub fn ensure_compatible(lib_meta: &str) -> crate::Result<()> {
         return Ok(());
     }
 
-    Err(error!(
+    bail!(
         Span::call_site() =>
         "dylib metadata does not match proc-macro runner; rebuild the crate or use the same toolchain\n\
          expected:\n{RUSTC_META}\
          dylib:\n{lib_meta}"
-    ))
+    )
 }
 
 #[cfg(test)]

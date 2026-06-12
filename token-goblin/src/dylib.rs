@@ -30,7 +30,7 @@ impl FromStr for BuildProfile {
         match s {
             "debug" => Ok(BuildProfile::Debug),
             "release" => Ok(BuildProfile::Release),
-            _ => Err(error!(Span::call_site() => "Unknown build profile: {}", s)),
+            _ => bail!(Span::call_site() => "Unknown build profile: {}", s),
         }
     }
 }
@@ -178,11 +178,11 @@ fn copy_dylib_artifact(generated: &GeneratedCrate, profile: BuildProfile) -> Res
 pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Result<DylibBuild> {
     let manifest_path = generated.manifest_path();
     if !manifest_path.is_file() {
-        return Err(error!(
+        bail!(
             Span::call_site() =>
             "generated crate manifest not found: {}",
             manifest_path.display()
-        ));
+        );
     }
     if let Some(dylib) = check_cached_dylib(generated, profile) {
         return Ok(dylib);
@@ -231,21 +231,21 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(error!(
+        bail!(
             Span::call_site() =>
             "cargo build failed for {} (status={}):\n{stdout}{stderr}",
             manifest_path.display(),
             output.status
-        ));
+        );
     }
 
     let dylib_path = generated.dylib_src_path(profile);
     if !dylib_path.is_file() {
-        return Err(error!(
+        bail!(
             Span::call_site() =>
             "dylib not found after successful build: {}",
             dylib_path.display()
-        ));
+        );
     }
     let dylib_path = copy_dylib_artifact(generated, profile)?;
 
@@ -270,11 +270,11 @@ fn read_dylib_meta(library: &libloading::Library, dylib_path: &Path) -> Result<&
     // Safety: return pointer to static string on stable C ABI.
     let ptr = unsafe { meta_fn() };
     if ptr.is_null() {
-        return Err(error!(
+        bail!(
             Span::call_site() =>
             "`meta` returned null in {}",
             dylib_path.display()
-        ));
+        );
     }
 
     // Safety: we know that the pointer is a valid null-terminated C string.

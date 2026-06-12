@@ -76,7 +76,7 @@ impl Metadata {
             }
             let Some(workspace_dependency) = workspace_dependencies.get(dependency.name.as_str())
             else {
-                return Err(error!(Span::call_site() => "Workspace dependency not found"));
+                bail!(Span::call_site() => "Workspace dependency not found");
             };
             // TODO: add extra knowledge from workspace dependency.
             dependency.value = ValueOrWorkspace::from_value(workspace_dependency.clone())?;

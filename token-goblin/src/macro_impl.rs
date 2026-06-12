@@ -2,7 +2,7 @@ use std::{fmt::Debug, path::PathBuf, str::FromStr};
 
 use proc_macro2::{Delimiter, Group, Span, TokenStream, TokenTree};
 use quote::{ToTokens, format_ident, quote, quote_spanned};
-use syn::{Attribute, Token, parse::Parser, punctuated::Punctuated, spanned::Spanned};
+use syn::{Attribute, Token, spanned::Spanned};
 
 use crate::{
     Result,
@@ -12,153 +12,65 @@ use crate::{
     template::{self, TemplateContext},
 };
 
+// ===============================
+// Parse objects
+// ===============================
+
+///
+/// The way how proxy macro is used.
+///
 pub enum ProxyMode {
+    /// Proc-macro code is already compiled into dylib.
     Precompiled { dylib_path: syn::LitStr },
     //TODO: avoid double parse
+    /// Proc-macro code need to be compiled before use.
     Lazy { config: Group, src: Group },
 }
 
+/// Full list of internal arguments to `proxy` macro.
+/// `{$mode, $macro_name}`
 pub struct ProxyArgs {
+    /// The whole arguments list is braced.
     pub _brace: syn::token::Brace,
+    /// The way how proxy macro is used.
     pub mode: ProxyMode,
     pub _comma: Token![,],
+    /// Name of the macro:
+    /// used in case, where dylib contain multiple macros.
     pub macro_name: syn::Ident,
 }
-impl ProxyArgs {
-    fn compiled(dylib_path: syn::LitStr, macro_name: syn::Ident) -> Self {
-        Self {
-            _brace: syn::token::Brace::default(),
-            mode: ProxyMode::Precompiled { dylib_path },
-            _comma: syn::token::Comma::default(),
-            macro_name,
-        }
-    }
-    pub fn lazy(macro_name: syn::Ident, config: &TokenStream, src: &TokenStream) -> Self {
-        Self {
-            _brace: syn::token::Brace::default(),
-            mode: ProxyMode::Lazy {
-                config: Group::new(Delimiter::Brace, config.clone()),
-                src: Group::new(Delimiter::Brace, src.clone()),
-            },
-            _comma: syn::token::Comma::default(),
-            macro_name,
-        }
-    }
-}
-
-impl syn::parse::Parse for ProxyMode {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        if input.peek(syn::LitStr) {
-            let dylib_path = input.parse()?;
-            Ok(ProxyMode::Precompiled { dylib_path })
-        } else {
-            let config = input.parse()?;
-            let src = input.parse()?;
-            Ok(ProxyMode::Lazy { config, src })
-        }
-    }
-}
-impl syn::parse::Parse for ProxyArgs {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let content;
-        Ok(Self {
-            _brace: syn::braced!(content in input),
-            mode: ProxyMode::parse(&content)?,
-            _comma: content.parse()?,
-            macro_name: content.parse()?,
-        })
-    }
-}
-impl ToTokens for ProxyMode {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        match self {
-            ProxyMode::Precompiled { dylib_path } => {
-                tokens.extend(dylib_path.to_token_stream());
-            }
-            ProxyMode::Lazy { config, src } => {
-                tokens.extend(config.to_token_stream());
-                tokens.extend(src.to_token_stream());
-            }
-        }
-    }
-}
-impl ToTokens for ProxyArgs {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        let brace = syn::token::Brace::default();
-        brace.surround(tokens, |tokens| {
-            tokens.extend(self.mode.to_token_stream());
-            tokens.extend(syn::token::Comma::default().to_token_stream());
-            tokens.extend(self.macro_name.to_token_stream());
-        });
-    }
-}
-
-impl Debug for ProxyMode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ProxyMode::Precompiled { dylib_path } => {
-                write!(f, "Precompiled {{ dylib_path: {} }}", dylib_path.value())
-            }
-            ProxyMode::Lazy { config, src } => {
-                write!(f, "Lazy {{ config: {config}, src: {src} }}")
-            }
-        }
-    }
-}
-
-impl Debug for ProxyArgs {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "ProxyArgs {{ macro_name: {:?}, mode: {:?} }}",
-            self.macro_name, self.mode
-        )
-    }
-}
-
-impl Debug for ProxyInput {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "ProxyInput {{ proxy_args: {:?}, tokens: \"{}\" }}",
-            self.proxy_args, self.tokens
-        )
-    }
-}
-
+/// Typed version of params to `proxy!{$($proxy_input)*}` macro.
 pub struct ProxyInput {
+    /// Internal arguments.
     pub proxy_args: ProxyArgs,
+    /// The input to the charm.
     pub tokens: proc_macro2::TokenStream,
 }
 
-impl syn::parse::Parse for ProxyInput {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let proxy_args = input.parse()?;
-
-        let tokens = if input.is_empty() {
-            proc_macro2::TokenStream::new()
-        } else {
-            input.parse::<syn::Token![,]>()?;
-            input.parse()?
-        };
-        Ok(Self { proxy_args, tokens })
-    }
-}
-
+/// Whether to enforce lazy expansion of `munch` macro.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Lazieness {
     Enforced,
     Disabled,
-    // By default enabled for IDE only
+    /// By default enabled for IDE only
     #[default]
     Default,
 }
+/// Configuration of `munch` macro.
+/// provided as extra arguments:
+/// ```
+/// #[token_goblin::munch(lazy = true, incremental = false, split_cache = true, profile = "release")]
+/// fn inner_function(_: TokenStream) -> TokenStream {
+///   //..
+///   # todo!()
+/// }
+///
+/// ```
 #[derive(Copy, Clone, Debug)]
 pub struct Config {
     // If set to false, we add source-hash to output path
     // This enforces recompilation of the macro for each change in the source code.
     pub incremental: bool,
-
     // If set to lazy, build is done on proxy side.
     // This is default for IDE expansion, and can be (experimentally) enforced per macro.
     pub lazy: Lazieness,
@@ -168,109 +80,22 @@ pub struct Config {
     pub profile: BuildProfile,
 }
 
-impl syn::parse::Parse for Config {
-    // parse key=value, comma separated pairs,
-    // boolean values can skip arguments
-    // debug provided as ident, either `item` or `expr`
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let mut config = Self::default();
-        while !input.is_empty() {
-            let key = input.parse::<syn::Ident>()?;
-            let value = if input.peek(syn::Token![=]) {
-                input.parse::<syn::Token![=]>()?;
-                input.parse::<syn::Lit>()?
-            } else {
-                syn::Lit::Bool(syn::LitBool::new(true, key.span()))
-            };
-
-            match key.to_string().as_str() {
-                "incremental" => config.incremental = lit_to_bool(value)?,
-                "split_cache" => config.split_cache = lit_to_bool(value)?,
-                "lazy" => {
-                    config.lazy = if lit_to_bool(value)? {
-                        Lazieness::Enforced
-                    } else {
-                        Lazieness::Disabled
-                    }
-                }
-                "profile" => {
-                    config.profile =
-                        lit_to_string(value).and_then(|s| BuildProfile::from_str(&s))?;
-                }
-                _ => return Err(error!(key.span() => "Unknown key: {}", key)),
-            }
-
-            if input.is_empty() {
-                break;
-            }
-            input.parse::<syn::Token![,]>()?;
-        }
-        Ok(config)
-    }
-}
-fn lit_to_bool(lit: syn::Lit) -> Result<bool> {
-    match lit {
-        syn::Lit::Bool(lit) => Ok(lit.value()),
-        _ => Err(error!(lit.span() => "Expected boolean value")),
-    }
-}
-fn lit_to_string(lit: syn::Lit) -> Result<String> {
-    match lit {
-        syn::Lit::Str(lit) => Ok(lit.value()),
-        _ => Err(error!(lit.span() => "Expected string value")),
-    }
-}
-
-impl Config {
-    fn from_attrs(args: TokenStream) -> Result<Self> {
-        debug!("config args: {}", args);
-        syn::parse2(args)
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            incremental: true,
-            split_cache: false,
-            lazy: Lazieness::default(),
-            profile: BuildProfile::default(),
-        }
-    }
-}
-
+/// Arguments to `Spit` derive macro.
+/// provided as extra attributes: `#[charm(path_to_macro)]`
+/// ```
+/// #[derive(token_goblin::Spit)]
+/// #[charm(path_to_macro)]
+/// struct MyStruct {
+///   field: i32,
+/// }
+/// ```
 struct SpitArgs {
     pub list_of_macros: Vec<syn::Path>,
 }
-impl syn::parse::Parse for SpitArgs {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let attrs = Attribute::parse_outer(input)?;
 
-        let mut list_of_macros: Vec<syn::Path> = Vec::new();
-        for attr in attrs {
-            if !attr.path().is_ident("charm") {
-                continue;
-            }
-            let syn::Meta::List(list) = attr.meta else {
-                continue;
-            };
-            list_of_macros.push(syn::parse2(list.tokens.clone())?);
-        }
-        debug!(
-            "list_of_macros: {}",
-            list_of_macros
-                .iter()
-                .map(|attr| attr.to_token_stream().to_string())
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
-        while !input.is_empty() {
-            // consume item
-            let _ = input.parse::<TokenTree>()?;
-        }
-        Ok(Self { list_of_macros })
-    }
-}
+// ===============================
+// Macro impls
+// ===============================
 #[allow(clippy::needless_pass_by_value, reason = "better api")]
 pub fn munch_impl(args: TokenStream, item_tts: TokenStream) -> Result<TokenStream> {
     let config = Config::from_attrs(args.clone())?;
@@ -279,17 +104,11 @@ pub fn munch_impl(args: TokenStream, item_tts: TokenStream) -> Result<TokenStrea
     let context = build_template(item)?;
 
     if is_lazy(config) {
-        // return Ok(quote! {
-        //     // #ide_helper_mod
-        //     // #compile_info_docs
-        //     const _: () = (); // add new item, to prevent `cargo expand` cleanup  (in case where we have only one macro_rules!).
-        //     #out_mod
-        // });
         let mod_name = context
             .mod_name
             .as_ref()
             .map_or_else(|| format_ident!("global"), |(_, name)| name.clone());
-        let fn_entries = entries_impl(&mod_name, &context.entries, |e| {
+        let fn_entries = expand_entries(&mod_name, &context.entries, |e| {
             ProxyArgs::lazy(e.clone(), &args, &item_tts)
         });
 
@@ -347,6 +166,8 @@ pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenS
     )
 }
 
+#[allow(clippy::needless_pass_by_value, reason = "consistent api")]
+#[allow(clippy::unnecessary_wraps, reason = "consistent api")]
 pub fn spit_impl(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     Ok(quote! {
         #attr!{#item}
@@ -362,18 +183,16 @@ pub fn spit_derive_impl(input: TokenStream) -> Result<TokenStream> {
     })
 }
 
+// ===============================
+// Integration glue of multiple components
+// ===============================
 fn build_template(item: syn_items::Item) -> Result<TemplateContext> {
     let template = timed!("build_template", {
         match item {
             syn_items::Item::Fn(item) => TemplateContext::from_fn(item),
             syn_items::Item::Mod(item) => TemplateContext::from_mod(item),
-            // In case we need to support `macro foo {}` items
-            // syn::Item::Verbatim(item) => macro_impl(config, item),
-            // for macro_rules! syntax (both looks useless, since it's always easier
-            // to implement custom `macro_rules!` wrapper )
-            // syn::Item::Macro(item) => macro_impl(config, item),
             v @ syn_items::Item::Verbatim(_) => {
-                Err(error!(v.span() => "Expected function or module" ))
+                bail!(v.span() => "Expected function or module" )
             }
         }
     })?;
@@ -389,6 +208,28 @@ fn build_template(item: syn_items::Item) -> Result<TemplateContext> {
         );
     }
     Ok(template)
+}
+
+fn render_template(context: &TemplateContext, config: Config) -> Result<GeneratedCrate> {
+    timed!("render_template", {
+        let (output_dir, stable) = path::calculate_generated_path(context.name_span());
+
+        debug!(
+            "path_is_stable: {}, config.cache: {}",
+            stable, config.incremental
+        );
+
+        // If user enforces no-cache, or we cannot find macro declaration path
+        // we need to include the source hash
+        let include_source_hash = !(config.incremental && stable);
+
+        template::render_crate(
+            &output_dir,
+            context,
+            config.split_cache,
+            include_source_hash,
+        )
+    })
 }
 
 impl TemplateContext {
@@ -433,7 +274,7 @@ impl TemplateContext {
         let package_name = format!("token-goblin-{}", name.to_string().replace('_', "-"));
 
         let Some((b, content)) = mod_item.content else {
-            return Err(error!(mod_item.span() => "Expected module content"));
+            bail!(mod_item.span() => "Expected module content");
         };
 
         let mut entries = Vec::new();
@@ -448,7 +289,7 @@ impl TemplateContext {
         }
 
         if entries.is_empty() {
-            return Err(error!(b.span.join() => "Expected at least one function"));
+            bail!(b.span.join() => "Expected at least one function")
         }
         Ok(TemplateContext {
             package_name: package_name.clone(),
@@ -505,7 +346,7 @@ impl BuildContext {
             .as_ref()
             .map_or_else(|| format_ident!("global"), |(_, name)| name.clone());
 
-        let fn_entries = entries_impl(&mod_name, &self.template_context.entries, |name| {
+        let fn_entries = expand_entries(&mod_name, &self.template_context.entries, |name| {
             ProxyArgs::compiled(
                 syn::LitStr::new(&self.dylib_path.display().to_string(), Span::call_site()),
                 name.clone(),
@@ -573,29 +414,7 @@ impl BuildContext {
     }
 }
 
-fn render_template(context: &TemplateContext, config: Config) -> Result<GeneratedCrate> {
-    timed!("render_template", {
-        let (output_dir, stable) = path::calculate_generated_path(context.name_span());
-
-        debug!(
-            "path_is_stable: {}, config.cache: {}",
-            stable, config.incremental
-        );
-
-        // If user enforces no-cache, or we cannot find macro declaration path
-        // we need to include the source hash
-        let include_source_hash = !(config.incremental && stable);
-
-        template::render_crate(
-            &output_dir,
-            context,
-            config.split_cache,
-            include_source_hash,
-        )
-    })
-}
-
-fn entries_impl(
+fn expand_entries(
     mod_name: &syn::Ident,
     entries: &[syn_items::ItemFn],
     proxy_input: impl Fn(&syn::Ident) -> ProxyArgs,
@@ -635,6 +454,230 @@ fn entries_impl(
         });
     }
     out
+}
+
+impl ProxyArgs {
+    fn compiled(dylib_path: syn::LitStr, macro_name: syn::Ident) -> Self {
+        Self {
+            _brace: syn::token::Brace::default(),
+            mode: ProxyMode::Precompiled { dylib_path },
+            _comma: syn::token::Comma::default(),
+            macro_name,
+        }
+    }
+    pub fn lazy(macro_name: syn::Ident, config: &TokenStream, src: &TokenStream) -> Self {
+        Self {
+            _brace: syn::token::Brace::default(),
+            mode: ProxyMode::Lazy {
+                config: Group::new(Delimiter::Brace, config.clone()),
+                src: Group::new(Delimiter::Brace, src.clone()),
+            },
+            _comma: syn::token::Comma::default(),
+            macro_name,
+        }
+    }
+}
+
+impl Config {
+    fn from_attrs(args: TokenStream) -> Result<Self> {
+        debug!("config args: {}", args);
+        syn::parse2(args)
+    }
+}
+
+// ===============================
+// Trait impls
+// ===============================
+// Parse
+impl syn::parse::Parse for ProxyMode {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        if input.peek(syn::LitStr) {
+            let dylib_path = input.parse()?;
+            Ok(ProxyMode::Precompiled { dylib_path })
+        } else {
+            let config = input.parse()?;
+            let src = input.parse()?;
+            Ok(ProxyMode::Lazy { config, src })
+        }
+    }
+}
+impl syn::parse::Parse for ProxyArgs {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let content;
+        Ok(Self {
+            _brace: syn::braced!(content in input),
+            mode: ProxyMode::parse(&content)?,
+            _comma: content.parse()?,
+            macro_name: content.parse()?,
+        })
+    }
+}
+
+impl syn::parse::Parse for ProxyInput {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let proxy_args = input.parse()?;
+
+        let tokens = if input.is_empty() {
+            proc_macro2::TokenStream::new()
+        } else {
+            input.parse::<syn::Token![,]>()?;
+            input.parse()?
+        };
+        Ok(Self { proxy_args, tokens })
+    }
+}
+
+impl syn::parse::Parse for Config {
+    // parse key=value, comma separated pairs,
+    // boolean values can skip arguments
+    // debug provided as ident, either `item` or `expr`
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut config = Self::default();
+        while !input.is_empty() {
+            let key = input.parse::<syn::Ident>()?;
+            let value = if input.peek(syn::Token![=]) {
+                input.parse::<syn::Token![=]>()?;
+                input.parse::<syn::Lit>()?
+            } else {
+                syn::Lit::Bool(syn::LitBool::new(true, key.span()))
+            };
+
+            match key.to_string().as_str() {
+                "incremental" => config.incremental = lit_to_bool(value)?,
+                "split_cache" => config.split_cache = lit_to_bool(value)?,
+                "lazy" => {
+                    config.lazy = if lit_to_bool(value)? {
+                        Lazieness::Enforced
+                    } else {
+                        Lazieness::Disabled
+                    }
+                }
+                "profile" => {
+                    config.profile =
+                        lit_to_string(value).and_then(|s| BuildProfile::from_str(&s))?;
+                }
+                _ => bail!(key.span() => "Unknown key: {}", key),
+            }
+
+            if input.is_empty() {
+                break;
+            }
+            input.parse::<syn::Token![,]>()?;
+        }
+        Ok(config)
+    }
+}
+
+impl syn::parse::Parse for SpitArgs {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let attrs = Attribute::parse_outer(input)?;
+
+        let mut list_of_macros: Vec<syn::Path> = Vec::new();
+        for attr in attrs {
+            if !attr.path().is_ident("charm") {
+                continue;
+            }
+            let syn::Meta::List(list) = attr.meta else {
+                continue;
+            };
+            list_of_macros.push(syn::parse2(list.tokens.clone())?);
+        }
+        debug!(
+            "list_of_macros: {}",
+            list_of_macros
+                .iter()
+                .map(|attr| attr.to_token_stream().to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        while !input.is_empty() {
+            // consume item
+            let _ = input.parse::<TokenTree>()?;
+        }
+        Ok(Self { list_of_macros })
+    }
+}
+fn lit_to_bool(lit: syn::Lit) -> Result<bool> {
+    match lit {
+        syn::Lit::Bool(lit) => Ok(lit.value()),
+        _ => bail!(lit.span() => "Expected boolean value"),
+    }
+}
+fn lit_to_string(lit: syn::Lit) -> Result<String> {
+    match lit {
+        syn::Lit::Str(lit) => Ok(lit.value()),
+        _ => bail!(lit.span() => "Expected string value"),
+    }
+}
+
+// ToTokens
+impl ToTokens for ProxyMode {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
+            ProxyMode::Precompiled { dylib_path } => {
+                tokens.extend(dylib_path.to_token_stream());
+            }
+            ProxyMode::Lazy { config, src } => {
+                tokens.extend(config.to_token_stream());
+                tokens.extend(src.to_token_stream());
+            }
+        }
+    }
+}
+impl ToTokens for ProxyArgs {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let brace = syn::token::Brace::default();
+        brace.surround(tokens, |tokens| {
+            tokens.extend(self.mode.to_token_stream());
+            tokens.extend(syn::token::Comma::default().to_token_stream());
+            tokens.extend(self.macro_name.to_token_stream());
+        });
+    }
+}
+
+// Std traits
+impl Debug for ProxyMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProxyMode::Precompiled { dylib_path } => {
+                write!(f, "Precompiled {{ dylib_path: {} }}", dylib_path.value())
+            }
+            ProxyMode::Lazy { config, src } => {
+                write!(f, "Lazy {{ config: {config}, src: {src} }}")
+            }
+        }
+    }
+}
+
+impl Debug for ProxyArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ProxyArgs {{ macro_name: {:?}, mode: {:?} }}",
+            self.macro_name, self.mode
+        )
+    }
+}
+
+impl Debug for ProxyInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ProxyInput {{ proxy_args: {:?}, tokens: \"{}\" }}",
+            self.proxy_args, self.tokens
+        )
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            incremental: true,
+            split_cache: false,
+            lazy: Lazieness::default(),
+            profile: BuildProfile::default(),
+        }
+    }
 }
 
 // Location hash to prevent collisions in macro names

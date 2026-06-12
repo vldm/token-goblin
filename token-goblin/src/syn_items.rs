@@ -53,6 +53,12 @@ pub struct ItemMod {
 pub enum Item {
     Fn(ItemFn),
     Mod(ItemMod),
+
+    // In case we need to support `macro foo {}` items
+    // syn::Item::Verbatim(item) => macro_impl(config, item),
+    // for macro_rules! syntax (both looks useless, since it's always easier
+    // to implement custom `macro_rules!` wrapper )
+    // syn::Item::Macro(item) => macro_impl(config, item),
     Verbatim(TokenStream),
 }
 impl Parse for Body {

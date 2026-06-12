@@ -21,7 +21,7 @@ UX:
 - [ ] give interface `$crate::derive(..)`
 
 Features:
-- [ ] Use attributes, and derive through proxy macro.
+- [x] Use attributes, and derive through proxy macro.
 - [ ] support `entry(TokenStream, TokenStream) -> TokenStream` for attributes and derive.
 - [ ] `Reflect!<Type>` - allows collecting derive macro, and extend it in future.
 
