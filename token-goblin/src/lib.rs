@@ -12,10 +12,12 @@ mod ide_support;
 mod macro_impl;
 mod metadata;
 mod path;
+mod rust_mod_fs;
 mod rustc_meta;
 mod span_recovery;
 mod syn_items;
 mod template;
+
 use errors::MapCompileError;
 
 /// Set to 'true' to enable debug prints.

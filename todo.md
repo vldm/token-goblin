@@ -28,6 +28,7 @@ Features:
 Consider this:
 - [ ] Use wasm for libraries
 - [ ] Support module resolution ?
+- [ ] Extend api: `fn module_path(span: Span) -> String`
 
 Nice to have:
 - [ ] Pass cargo build errors and diagnostics.
