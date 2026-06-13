@@ -13,6 +13,10 @@ pub struct Output {
 
 /// Parse canonical host input text into a local fallback token stream.
 ///
+/// Returns:
+/// - `TokenStream` suitable for further parsing
+/// - anchor - span that is used in `output` to filter spans from external source (e.g. embedded `TokenStream::from_str`)
+///
 /// # Errors
 /// - `LexError` - if input is not a valid token stream.
 ///

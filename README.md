@@ -1,6 +1,9 @@
-# Token Goblin — munches your tokens, spits out macros
+# Token Goblin — munches your tokens, forge out charms
 
-`token-goblin` is a proc-macro library for defining proc-macro-like transformations inline, directly inside your crate, without separate proc-macro crate.
+
+![Token Goblin](assets/token-goblin.png)
+
+`token-goblin` is a proc-macro library for defining inline proc-macro, directly inside your crate, without separate proc-macro target.
 
 It is inspired by crates like `crabtime` and `inline-proc`, but aims to provide a more polished, flexible, and ergonomic API.
 
@@ -12,7 +15,8 @@ Add `token-goblin` to your crate:
 [dependencies]
 token-goblin = "0.1.0"
 ```
-Then teach the goblin a new **charm**:
+
+Then try:
 
 ```rust
 #[token_goblin::munch]
@@ -25,33 +29,59 @@ This generates a new macro, or **charm**, named foo!:
 ```rust
 foo!(bar baz); // will expand to `bar baz`
 ```
-In other words, `#[munch]` turns the function foo into a charm that munches input tokens and spits out new tokens.
 
-Note: beacause token-goblin are macros that generate macros, **charm** is used in docs for clarity.
+In other words, `#[munch]` turns the function into a new macro.
 
-# Inline proc-macro
+Note: beacause token-goblin are macros that generate macros, **charm** is used in docs for clarity (and a little bit of lore).
 
-The mix of `crabtime` and `inline-proc`
+# Usecases
 
-1. Uses dylib (or possible wasm) for libraries (like in inline-proc).
-- Macro definition is build to: `(dylib + macro_rules! declare($tts) => $lib::proxy!("path_to_dlyb", $tts))`
-- Macro caller (processing `$lib::proxy!("path_to_dlyb", $tts)`) is loading dylib and redirect $tts to proxy.
-2. Allow extending interface (like in crabtime), e.g. input: (`TokenStream`, String, Vec<String>, or pattern), 
-output: `TokenStream`, `String`, print directly to stdout.
-- entry point is always `fn entry (TokenStream) -> TokenStream` RUST_ABI.
-- if declaration use some customization macro should generate `shim` that will generate valid `entry` function with redirected input, output.
+## Inline proc-macro
 
-3. Use attributes, and derive through proxy macro.
-- support `entry(TokenStream, TokenStream) -> TokenStream` for attributes and derive.
-- give interface `$crate::derive(..)`
+While `proc-macro` provides an Rust api to write custom macros, it's anoying that for small macros you still need to create
+a separate crate.
 
-4. `Reflect!<Type>` - allows collecting derive macro, and extend it in future.
-5. Should use cargo build-cache and can work with `cache-proc-macros`.
-6. macro declaration should generate `rust-analyzer` shim for better type information.
-7. Support workspace dependencies.
-8. Support IDE
-9. map cargo errors to span information.
+Example adopted from `crabtime` docs:
+```rust
+#[token_goblin::munch]
+fn generate_enums(components: Vec<String>) -> TokenStream {
+    let mut result = vec![];
+    for dim in 1..=components.len() {
+        let cons = components[0..dim].join(",");
+        result.push(format!("#[derive(Debug)] enum Enum{dim} {{ {cons} }}"));
+    }
+    TokenStream::from_str(&result.join("\n")).unwrap()
+}
 
+generate_enums!["X", "Y", "Z", "W", "V", "U", "T", "S", "R", "Q"];
+```
+which will expand to:
+```rust
+enum Enum1 { X }
+// ... up to
+enum Enum10 { X, Y, Z, W, V, U, T, S, R, Q }
+```
+
+Note: like `crabtime`, `token-goblin` allows simple "string" based api.
+
+## Eval macro
+While token-goblin doesn't provide you `eval!` macro, it's simple to implement it yourself:
+
+
+## Why it's named Token Goblin?
+
+During thinkering about name, the ChatGPT 5.5 suggested this variant among others:
+
+![Token Goblin](assets/token-goblin-origin.png)
+
+Which i found ridiculous, especially after i saw [OpenAI post how their fighting "goblin" overuse by ChatGPT](https://openai.com/index/where-the-goblins-came-from/).
+
+Also the idea of "some magical entity that eats tokens" looks like a good metaphor for macros.
+
+## Why entrypoint macros named `munch` and `spit`?
+
+1. Because `munch` and `spit` fit well in "goblin" lore.
+2. I think that `#[munch] fn` would be a good replacement for existing [TTs muncher](https://lukaswirth.dev/tlborm/decl-macros/patterns/tt-muncher.html) - technique of writing recursive declarative macros, to parse complex input.
 
 ## Compare with other solutions
 
