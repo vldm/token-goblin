@@ -47,13 +47,28 @@ fn format_ide_helper_mod(template_context: &TemplateContext) -> TokenStream {
         .collect::<Vec<_>>();
     let content = &template_context.generated_content;
     let mod_name = format_ident!(
-        "__ide_tg_helper{}",
+        "__ide_tg_helper_{}",
         cargo_crate_name(&template_context.package_name)
     );
     quote! {
         mod #mod_name {
             extern crate token_goblin_runtime;
             use token_goblin_runtime::prelude::*;
+            // We need to provide dummy implementations of quote and output macros,
+            // firstly to speedup expansion, secondly because R-A sometimes crashes on them.
+            macro_rules! quote {
+                ($($tokens:tt)*) => {{
+                    /// NOTE: This is expansion of dummy output impl.
+                    const _: () = ();
+                    TokenStream::new()
+                }}
+            }
+            macro_rules! output {
+                ($($tokens:tt)*) => {
+
+                    {let _ = quote!($($tokens)*);}
+                }
+            }
             #(#deps)*
             #content
         }

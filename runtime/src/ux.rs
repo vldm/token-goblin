@@ -234,9 +234,9 @@ pub fn push_output(output: impl IntoTokenStream) {
 #[must_use]
 pub(crate) fn flush_output(last_part: TokenStream) -> TokenStream {
     COLLECTED_OUTPUT.with(|collected_output| {
-        let mut collected_output = collected_output.borrow_mut();
+        let mut collected_output = std::mem::take(&mut *collected_output.borrow_mut());
         collected_output.extend(last_part);
-        collected_output.clone()
+        collected_output
     })
 }
 

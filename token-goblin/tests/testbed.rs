@@ -93,5 +93,5 @@ fn test_module() {
     let x = module::module_macro!(12);
     let y = module::module_macro_embed!();
     assert_eq!(x, 12);
-    assert_eq!(y, x);
+    assert_eq!(y, 12);
 }

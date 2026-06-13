@@ -304,7 +304,7 @@ pub fn load_library(dylib_path: &Path) -> Result<libloading::Library> {
 #[allow(clippy::needless_pass_by_value, reason = "consume token stream")]
 pub fn load_and_run_entry(
     dylib_path: &Path,
-    macro_name: &str,
+    macro_name: &syn::Ident, // we use syn ident to recover it's span
     input: TokenStream,
 ) -> Result<TokenStream> {
     let library = load_library(dylib_path)?;
@@ -319,11 +319,12 @@ pub fn load_and_run_entry(
     } else {
         &serialized_input.source_text
     };
-    debug!("charm [{macro_name}] input: {print_input}");
-    let guest = entry(macro_name, &serialized_input.source_text);
+    let macro_name_str = macro_name.to_string();
+    debug!("charm [{macro_name_str}] input: {print_input}");
+    let guest = entry(&macro_name_str, &serialized_input.source_text);
     debug!("output: {}", guest.text);
 
-    let res = span_recovery::hydrate(&serialized_input, &guest);
+    let res = span_recovery::hydrate(&serialized_input, &guest, macro_name.span());
 
     Ok(res)
 }

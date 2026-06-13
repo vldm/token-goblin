@@ -1,14 +1,29 @@
 //! Guest-side wire format for the dylib boundary.
+//! It's an internall module, but feel free to enjoy the docs.
 
 use std::{ops::Range, panic::UnwindSafe};
 
 use proc_macro2::{LexError, Span, TokenStream, TokenTree};
 
+use crate::wire::panic::{PanicLocation, PanicReport};
+
 /// Guest output packet returned from dylib `entry`.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// THIS TYPE SHOULD MATCH `token_goblin::span_recovery::Output`
 pub struct Output {
     pub text: String,
-    pub spans: Vec<Range<usize>>,
+    pub spans: Vec<OutputEntry>,
+}
+/// Single entry in the output.
+/// THIS TYPE SHOULD MATCH `token_goblin::span_recovery::OutputEntry`
+#[derive(PartialEq, Eq, Debug)]
+pub struct OutputEntry {
+    pub is_panic: bool,
+    pub range: Range<usize>,
+}
+impl OutputEntry {
+    pub fn new(is_panic: bool, range: Range<usize>) -> Self {
+        Self { is_panic, range }
+    }
 }
 
 /// The entry for `charm` that handle input/output converions, and panics handling.
@@ -16,26 +31,47 @@ pub struct Output {
 /// check out:
 /// - [`panic::run_and_catch`] for panic handling.
 /// - [`parse_input`] for input parsing.
-/// - [`output`] for output serialization.
+/// - [`collect_outputs`] for output serialization.
 ///
+#[allow(clippy::missing_panics_doc, reason = "panic is in catch block")]
 pub fn entry(input: &str, body: impl FnOnce(TokenStream) -> TokenStream + UnwindSafe) -> Output {
-    let Ok((input, anchor)) = parse_input(input) else {
-        return Output {
-            text: "invalid serialized input".to_string(),
-            spans: vec![],
-        };
-    };
-    let tokens = panic::run_and_catch(|| body(input)).unwrap_or_else(|e| {
-        let message = format!(
-            "panic in charm (at {location}): {error}",
-            error = e.message,
-            location = e
-                .location
-                .unwrap_or_else(|| "<unknown location>".to_string())
-        );
-        syn::Error::new(Span::call_site(), message).to_compile_error()
+    let mut panics = None;
+
+    let (tokens, anchor) = panic::run_and_catch(|| {
+        let (input, anchor) = parse_input(input).unwrap();
+        (body(input), anchor)
+    })
+    .unwrap_or_else(|e| {
+        let (msg, location) = panic_to_compile_error(e);
+        panics = Some((
+            msg.clone(),
+            location // TODO: Rewrite it with normal types
+                .map(|loc| Range {
+                    start: loc.line as usize,
+                    end: loc.column as usize,
+                })
+                .unwrap_or_default(),
+        ));
+        (TokenStream::new(), None)
     });
-    output(tokens, anchor)
+
+    collect_outputs(tokens, panics, anchor)
+}
+fn panic_to_compile_error(e: PanicReport) -> (TokenStream, Option<PanicLocation>) {
+    let message = format!(
+        "panic in charm (at {location}): {error}",
+        error = e.message,
+        location = e.location.as_ref().map_or_else(
+            || "<unknown location>".to_string(),
+            PanicLocation::to_string
+        )
+    );
+    // we duplicate panics, to visualize it as error on both sides:
+    // - call site of macro
+    // - macro definition position
+    let msg = syn::Error::new(Span::call_site(), message).to_compile_error();
+
+    (msg, e.location)
 }
 
 /// Parse canonical host input text into a local fallback token stream.
@@ -56,12 +92,39 @@ pub fn parse_input(source: &str) -> Result<(TokenStream, Option<Span>), LexError
 /// Serialize macro output into text plus flattened leaf-token source ranges.
 #[allow(clippy::needless_pass_by_value, reason = "consume token stream")]
 #[must_use]
-pub fn output(tokens: TokenStream, anchor: Option<Span>) -> Output {
-    let resulted_stream = crate::ux::flush_output(tokens);
-    Output {
-        text: resulted_stream.to_string(),
-        spans: flatten_leaf_spans(&resulted_stream, anchor),
+pub fn collect_outputs(
+    tokens: TokenStream,
+    error: Option<(TokenStream, Range<usize>)>,
+    anchor: Option<Span>,
+) -> Output {
+    let mut output = {
+        // collect external tts first
+        let resulted_stream = crate::ux::flush_output(tokens);
+
+        let source_range_fn = |span: Span| source_range(span, anchor);
+        // then regular output with remapped spans
+        Output {
+            text: resulted_stream.to_string(),
+            spans: flatten_leaf_spans(&resulted_stream, &source_range_fn)
+                .into_iter()
+                .map(|range| OutputEntry::new(false, range))
+                .collect(),
+        }
+    };
+
+    // And then panic with location info
+    if let Some((panics, range)) = error {
+        let error_source_ranges = |_| range.clone();
+        output.text.push(' ');
+        output.text.push_str(&panics.to_string());
+
+        output.spans.extend(
+            flatten_leaf_spans(&panics, &error_source_ranges)
+                .into_iter()
+                .map(|range| OutputEntry::new(true, range)),
+        );
     }
+    output
 }
 
 fn first_leaf_span(tokens: &TokenStream) -> Option<Span> {
@@ -80,19 +143,26 @@ fn first_leaf_span(tokens: &TokenStream) -> Option<Span> {
     None
 }
 
-fn flatten_leaf_spans(tokens: &TokenStream, anchor: Option<Span>) -> Vec<Range<usize>> {
+fn flatten_leaf_spans(
+    tokens: &TokenStream,
+    source_range_fn: &dyn Fn(Span) -> Range<usize>,
+) -> Vec<Range<usize>> {
     let mut spans = Vec::new();
-    collect_leaf_spans(tokens, anchor, &mut spans);
+    collect_leaf_spans(tokens, &mut spans, source_range_fn);
     spans
 }
 
-fn collect_leaf_spans(tokens: &TokenStream, anchor: Option<Span>, spans: &mut Vec<Range<usize>>) {
+fn collect_leaf_spans(
+    tokens: &TokenStream,
+    spans: &mut Vec<Range<usize>>,
+    source_range_fn: &dyn Fn(Span) -> Range<usize>,
+) {
     for token in tokens.clone() {
         match token {
-            TokenTree::Group(group) => collect_leaf_spans(&group.stream(), anchor, spans),
-            TokenTree::Ident(ident) => spans.push(source_range(ident.span(), anchor)),
-            TokenTree::Punct(punct) => spans.push(source_range(punct.span(), anchor)),
-            TokenTree::Literal(literal) => spans.push(source_range(literal.span(), anchor)),
+            TokenTree::Group(group) => collect_leaf_spans(&group.stream(), spans, source_range_fn),
+            TokenTree::Ident(ident) => spans.push(source_range_fn(ident.span())),
+            TokenTree::Punct(punct) => spans.push(source_range_fn(punct.span())),
+            TokenTree::Literal(literal) => spans.push(source_range_fn(literal.span())),
         }
     }
 }
@@ -113,16 +183,29 @@ fn source_range(span: Span, anchor: Option<Span>) -> Range<usize> {
 
 // A hack that provide extra info
 mod panic {
+    use core::fmt;
     use std::{
         any::Any,
         cell::RefCell,
+        fmt::Display,
         panic::{self, AssertUnwindSafe, PanicHookInfo},
     };
 
     #[derive(Debug)]
+    pub struct PanicLocation {
+        pub file: String,
+        pub line: u32,
+        pub column: u32,
+    }
+    impl Display for PanicLocation {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}:{}:{}", self.file, self.line, self.column)
+        }
+    }
+    #[derive(Debug)]
     pub struct PanicReport {
         pub message: String,
-        pub location: Option<String>,
+        pub location: Option<PanicLocation>,
     }
 
     thread_local! {
@@ -146,9 +229,11 @@ mod panic {
         panic::set_hook(Box::new(move |info: &PanicHookInfo<'_>| {
             let message = panic_payload_to_string(info.payload());
 
-            let location = info
-                .location()
-                .map(|loc| format!("{}:{}:{}", loc.file(), loc.line(), loc.column()));
+            let location = info.location().map(|loc| PanicLocation {
+                file: loc.file().to_string(),
+                line: loc.line(),
+                column: loc.column(),
+            });
 
             LAST_PANIC.with(|slot| {
                 *slot.borrow_mut() = Some(PanicReport { message, location });
@@ -193,6 +278,7 @@ mod tests {
     use std::str::FromStr as _;
 
     use proc_macro2::{Literal, TokenTree};
+    use syn::Ident;
 
     use super::*;
 
@@ -232,16 +318,16 @@ mod tests {
     ",
         )
         .unwrap();
-        let out = output(generated, input.1);
-        assert_eq!(out.spans, [0..0]);
+        let out = collect_outputs(generated, None, input.1);
+        assert_eq!(out.spans, [OutputEntry::new(false, 0..0)]);
     }
 
     #[test]
     fn output_preserves_input_relative_spans() {
         let input = parse_input("12").expect("valid token stream");
-        let out = output(input.0.clone(), input.1);
+        let out = collect_outputs(input.0.clone(), None, input.1);
         assert_eq!(out.text, "12");
-        assert_eq!(out.spans, [0..2]);
+        assert_eq!(out.spans, [OutputEntry::new(false, 0..2)]);
     }
 
     #[test]
@@ -252,5 +338,50 @@ mod tests {
         .unwrap_err();
         assert_eq!(report.message, "test panic");
         assert!(report.location.is_some());
+    }
+
+    #[test]
+    fn test_entry_full_flow() {
+        let input = "12";
+        let body = |mut input: TokenStream| {
+            input.extend([Ident::new("foo", Span::call_site())]);
+            input
+        };
+        let output = entry(input, body);
+        assert_eq!(output.text, "12 foo");
+        assert_eq!(
+            output.spans,
+            [OutputEntry::new(false, 0..2), OutputEntry::new(false, 0..0)]
+        );
+    }
+
+    #[test]
+    fn test_checks_that_entry_cleanup() {
+        let input = "12";
+        let body = |mut input: TokenStream| {
+            input.extend([Ident::new("foo", Span::call_site())]);
+            input
+        };
+        let output = entry(input, body);
+        assert_eq!(output.text, "12 foo");
+        // second call should produce same output
+        let output = entry(input, body);
+        assert_eq!(output.text, "12 foo");
+        assert_eq!(
+            output.spans,
+            [OutputEntry::new(false, 0..2), OutputEntry::new(false, 0..0)]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "second panic")]
+    fn test_check_panic_hook_cleanup() {
+        let input = "12";
+        let body = |_: TokenStream| {
+            panic!("test panic");
+        };
+        let output = entry(input, body);
+        assert!(output.text.contains("test panic"));
+        panic!("second panic");
     }
 }

@@ -125,41 +125,44 @@ fn stringify(input: syn::Ident) -> TokenStream {
 
 </details>
 
+## Rewriting declarative macros to proc-macro API
 
-## TTs muncher replacement
-
-[TTs muncher](https://lukaswirth.dev/tlborm/decl-macros/patterns/tt-muncher.html) is a technique of writing recursive macro-by-examples macros, to parse complex input.
-
-Example from link above (slightly modified):
-```rust
-macro_rules! trace {
-    () => {};
-
-    (trace $name:ident; $($tail:tt)*) => {{
-        println!("{} = {:?}", stringify!($name), $name);
-        trace!($($tail)*);
-    }};
-
-    (trace $name:ident = $value:expr; $($tail:tt)*) => {{
-        let $name = $value;
-        println!("{} = {:?}", stringify!($name), $name);
-        trace!($($tail)*);
-    }};
-}
-```
+While proc-macro API is more Rust-like and powerful, working with TokenStream introduce some boilerplate, and some macros should be kept as declarative.
 
 <details>
-  <summary>Expand to see details</summary>
+<summary>Example of TTs muncher rewrite as example</summary>
+
+
+    [TTs muncher](https://lukaswirth.dev/tlborm/decl-macros/patterns/tt-muncher.html) is a technique of writing recursive declarative macros, to parse complex input.
+
+    If we took example from link above (slightly modified):
+
+    ```rust
+    macro_rules! trace {
+        () => {};
+
+        ($name:ident; $($tail:tt)*) => {{
+            println!("{} = {:?}", stringify!($name), $name);
+            trace!($($tail)*);
+        }};
+
+        ($name:ident = $value:expr; $($tail:tt)*) => {{
+            let $name = $value;
+            println!("{} = {:?}", stringify!($name), $name);
+            trace!($($tail)*);
+        }};
+    }
+    ```
 
     It expects input in format:
 
     ```rust
     let a = 10;
     trace! {
-        trace x = 2 + 3;
-        trace y = x * 10;
-        trace x;
-        trace y;
+        x = 2 + 3;
+        y = x * 10;
+        x;
+        y;
     }
     ```
     expands to something like:
@@ -189,17 +192,77 @@ macro_rules! trace {
     y = 50
     ```
 
+
+    Rewritting it as to proc-macro `TokenStream` API, will increase amount of code, and contain a lot of boilerplate:
+
+    ```rust
+    #[token_goblin::munch]
+    fn trace_cycle(input: TokenStream) {
+        let mut iter = input.into_iter().peekable();
+
+        while iter.peek().is_some() {
+            let Some(TokenTree::Group(g)) = iter.next() else {
+                panic!("Expected group");
+            };
+            let Some(TokenTree::Ident(ident)) = iter.next() else {
+                panic!("Expected ident");
+            };
+            let mut expr = (&mut iter)
+                .take_while(|token| !matches!(token, TokenTree::Punct(p) if p.as_char() == ';'))
+                .collect::<Vec<_>>();
+
+            let let_stmt = if expr.is_empty() {
+                quote! {}
+            } else {
+                quote! {
+                    let #ident  #(#expr)*;
+                }
+            };
+            let ident_str = ident.to_string();
+            output! {
+                #let_stmt;
+                writeln!(#g, "{} = {:?}", #ident_str, #ident).ok();
+            }
+        }
+        if iter.peek().is_some() {
+            panic!("Expected end of input");
+        }
+    }
+    ```
+
+    Using `syn` with `syn-derive` might help with main logic:
+
+    ```rust
+    pub fn trace_syn(input: TraceInput) -> TokenStream {
+        let mut out = TokenStream::new();
+
+        for TraceStmt {
+            writer,
+            ident,
+            value,
+        } in input.0
+        {
+            let ident_str = ident.to_string();
+
+            let let_stmt = match value {
+                TraceValue::Some { expr, .. } => quote! { let #ident = #expr; },
+                TraceValue::None => quote! {},
+            };
+
+            out.extend(quote! {
+                #let_stmt
+                writeln!(#writer, "{} = {:?}", #ident_str, #ident).ok();
+            });
+        }
+
+        out
+    }
+    ```
+
+    It still requires defining `TraceInput` and `TraceStmt` structs, and `syn::parse::Parse` implementation for them.
+    See [examples/ttmunch-replace.rs](token-goblin/examples/ttmunch-replace.rs) for more details.
+
 </details>
-
-This macro can be rewritten as:
-
-```rust
-#[token_goblin::munch]
-fn trace(input: TokenStream) -> TokenStream {
-    while
-}
-```
-
 
 # Questions
 

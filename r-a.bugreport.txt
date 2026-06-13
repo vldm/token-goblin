@@ -1,0 +1,43 @@
+expansion of quote lead to:
+
+```
+thread 'Worker8' (6827453) panicked at crates/syntax/src/syntax_editor/edit_algo.rs:545:66:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0: __rustc::rust_begin_unwind
+   1: core::panicking::panic_fmt
+   2: core::panicking::panic
+   3: core::option::unwrap_failed
+   4: syntax::syntax_editor::edit_algo::TreeMutator::make_element_mut
+   5: syntax::syntax_editor::edit_algo::apply_edits
+   6: syntax_bridge::prettify_macro_expansion::prettify_macro_expansion
+   7: hir_expand::prettify_macro_expansion_::prettify_macro_expansion
+   8: ide::expand_macro::format
+   9: ide::expand_macro::expand_macro
+  10: ide::Analysis::expand_macro
+  11: rust_analyzer::handlers::request::handle_expand_macro
+  12: core::ops::function::FnOnce::call_once{{vtable.shim}}
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+additional context:
+   0: 
+version: 0.3.2929-standalone (7ea2b259ca 2026-06-07)
+request: rust-analyzer/expandMacro ExpandMacroParams {
+    text_document: TextDocumentIdentifier {
+        uri: Url {
+            scheme: "file",
+            cannot_be_a_base: false,
+            username: "",
+            password: None,
+            host: None,
+            port: None,
+            path: "/Users/m5-vladimir/work/token-goblin/token-goblin/examples/custom_input.rs",
+            query: None,
+            fragment: None,
+        },
+    },
+    position: Position {
+        line: 0,
+        character: 19,
+    },
+}
+```

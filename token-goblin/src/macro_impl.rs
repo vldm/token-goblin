@@ -165,11 +165,7 @@ pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenS
         }
     };
 
-    dylib::load_and_run_entry(
-        &dylib_path,
-        &input.proxy_args.macro_name.to_string(),
-        input.tokens,
-    )
+    dylib::load_and_run_entry(&dylib_path, &input.proxy_args.macro_name, input.tokens)
 }
 
 #[allow(clippy::needless_pass_by_value, reason = "consistent api")]
