@@ -13,22 +13,26 @@ Done:
 - [x] Macro caller (processing `$lib::proxy!("path_to_dlyb", $tts)`) is loading dylib and redirect $tts to proxy.
 - [x] Uses dylib for libraries (like in inline-proc).
 - [x] if declaration use some customization macro should generate `shim` that will generate valid `entry` function with redirected input, output.
+- [x] give interface `$crate::derive(..)` = spit
+- [x] Use attributes, and derive through proxy macro.
+- [x] Extend api: `fn module_path(span: Span) -> String`
 
 UX:
 
+- [ ] Extend spit interface to receive some extra params `#[charm(via = macro)]`, and params like `#[charm(other = ..)]`, for attribute like receive args in format `#[spit(macro(args,..))]`
+- [ ] Implement Snif 
 - [ ] Allow extending interface (like in crabtime), e.g. input: (`TokenStream`, String, Vec, or `syn::Parsable` types), 
 - [ ] Allow output to be created streamingly, like `println!`
-- [ ] give interface `$crate::derive(..)`
+
 
 Features:
-- [x] Use attributes, and derive through proxy macro.
 - [ ] support `entry(TokenStream, TokenStream) -> TokenStream` for attributes and derive.
 - [ ] `Reflect!<Type>` - allows collecting derive macro, and extend it in future.
 
 Consider this:
 - [ ] Use wasm for libraries
-- [ ] Support module resolution ?
-- [ ] Extend api: `fn module_path(span: Span) -> String`
+- [x] Support module resolution ?
+- [ ] Support of `mod X` in `#[munch] mod foo { .. }` should import module related to foo, from external file only.
 
 Nice to have:
 - [ ] Pass cargo build errors and diagnostics.
