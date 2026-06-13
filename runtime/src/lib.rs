@@ -3,6 +3,7 @@
 pub mod ux;
 mod wire;
 
+/// Prelude for generated code.
 pub mod prelude {
 
     pub use proc_macro2::*;
@@ -10,6 +11,9 @@ pub mod prelude {
     pub use std::str::FromStr;
     pub use syn;
 
+    pub use crate::ux::{CommaSeparated, Token};
     pub use crate::{output, output_str};
 }
-pub use wire::{Output, output, parse_input};
+pub use ux::{IntoTokenStream, TokenStreamInto};
+
+pub use wire::{Output, entry};

@@ -49,15 +49,11 @@ impl TemplateContext {
             .map(|entry| {
                 let name = &entry.sig.ident;
                 let lit = syn::LitStr::new(name.to_string().as_str(), name.span());
-                let ty = match entry.sig.inputs.first().unwrap() {
-                    syn::FnArg::Typed(ty) => ty.ty.to_token_stream(),
-                    syn::FnArg::Receiver(_) => panic!("`self` is not supported in munch fn input"),
-                };
 
                 quote! {
                     #lit => {
-                         match token_goblin_runtime::parse_into!(#ty => input) {
-                            Ok(ty) => impls::#name(ty),
+                         match token_goblin_runtime::TokenStreamInto::convert_token_stream(input) {
+                            Ok(v) => token_goblin_runtime::IntoTokenStream::into_token_stream(impls::#name(v)),
                             Err(e) => e.to_compile_error(),
                         }
                     }

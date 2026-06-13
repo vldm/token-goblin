@@ -13,21 +13,7 @@ pub extern "C" fn meta() -> *const std::ffi::c_char {
 
 #[unsafe(no_mangle)]
 pub fn entry(macro_name: &str, input: &str) -> token_goblin_runtime::Output {
-    let (input, anchor) =
-        token_goblin_runtime::parse_input(input).expect("invalid serialized input");
-
-    // 1. catch_unwind?
-    //
-    // 2. match first ident as entry branch
-    // let (macro_name, input) = split_first(input);
-    // match macro_name {
-    //  "attr_like"     => { let (attr, impl,) = input.split(); impls::attr_like(attr.convert()?, impl.convert()?)},
-    //  "function_like" => { let (input,) = input.split(); impls::function_like(input.convert()?)},
-    //  "custom_types"  => { let (c,) = input.split(); impls::custom_types(c.convert()?)},
-    //   v              => error!("Goblin proxy error: unexpected macro name: {v}"),
-    // }
-    let tokens = {
+    token_goblin_runtime::entry(input, |input| {
         // goblin-stencil: entries
-    };
-    token_goblin_runtime::output(tokens, anchor)
+    })
 }

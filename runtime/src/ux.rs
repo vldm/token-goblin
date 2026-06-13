@@ -1,8 +1,7 @@
 //! Better UX for proc-macro.
 //! Inspired by `crabtime`.
 //!
-//! Allows to receiving inputs and producing outputs in non token sream way.
-//!
+//! Allows to receiving inputs and producing outputs in non `TokenStream` way.
 //!
 //! E.g. instead of:
 //! ```
@@ -25,7 +24,7 @@
 //! # use proc_macro2::TokenStream;
 //! # use syn::parse::Parser;
 //!
-//! fn foo(input: Vec<String>) -> TokenStream {
+//! fn foo(components: CommaSeparated<Token>) -> TokenStream {
 //!    // Handling of `components`
 //!    # todo!()
 //! }
@@ -45,14 +44,92 @@
 //!
 //! The user can extend it as well, to support custom types in output.
 
-use std::{cell::RefCell, str::FromStr};
+use core::fmt::{self, Display};
+use std::{cell::RefCell, fmt::Debug, str::FromStr};
 
 use proc_macro2::TokenStream;
-use syn::parse::Parser;
+use syn::parse::{Parse, ParseStream, Parser};
+/// Represents a comma separated list of parsable values.
+///
+/// Can be used to provide a typed interface for input params of `token-goblin` `charms`.
+///
+/// Example:
+/// ```no_build
+/// #[token_goblin::munch]
+/// fn foo(input: CommaSeparated<syn::LitStr>) -> TokenStream {
+///     output_str!("{}", input.0.iter().map(|s| s.value()).collect::<Vec<_>>().join(", "));
+/// }
+///
+/// foo!("foo", "bar", "baz");
+/// // -> "foo, bar, baz"
+/// ```
+///
+pub struct CommaSeparated<T>(pub Vec<T>);
+
+impl From<CommaSeparated<Token>> for Vec<String> {
+    fn from(value: CommaSeparated<Token>) -> Self {
+        value.0.into_iter().map(|t| t.to_string()).collect()
+    }
+}
+
+/// Represents either `Ident` or `LitStr` token.
+///
+/// Used when macro need a simple interface for input, and user can decide a way to provide string.
+///
+/// Example:
+/// ```no_build
+/// #[token_goblin::munch]
+/// fn foo(input: Token) -> TokenStream {
+///     output_str!("{}", input.to_string());
+/// }
+///
+/// foo!("foo");
+/// // -> foo
+///
+pub enum Token {
+    Ident(syn::Ident),
+    Literal(syn::LitStr),
+}
+impl Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Token::Ident(ident) => write!(f, "{ident}"),
+            Token::Literal(literal) => write!(f, "{}", literal.value()),
+        }
+    }
+}
+
+impl Debug for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Token::Ident(ident) => write!(f, "Ident({ident:?})"),
+            Token::Literal(literal) => write!(f, "Literal({:?})", literal.value()),
+        }
+    }
+}
+impl PartialEq<&str> for Token {
+    fn eq(&self, other: &&str) -> bool {
+        match self {
+            Token::Ident(ident) => ident == *other,
+            // creates an owned string (but we don't have an api to compare directly)
+            Token::Literal(literal) => literal.value() == *other,
+        }
+    }
+}
+
+#[doc(hidden)] // auto trait for FromTokenStream
+pub trait TokenStreamInto<T> {
+    fn convert_token_stream(self) -> syn::Result<T>;
+}
+impl<T: syn::parse::Parse> TokenStreamInto<T> for TokenStream {
+    fn convert_token_stream(self) -> syn::Result<T> {
+        T::parse.parse2(self)
+    }
+}
 
 /// Convert specific type into `TokenStream`.
 ///
-/// In `token-goblin` it is used to convert output types into `TokenStream`.
+/// In `token-goblin` it is used to convert output types of `token-goblin` `charms` into `TokenStream`.
 /// We provide default implementations for:
 /// - `String`, `TokenStream`, `()` - so them can be used as output for `charm` fn
 ///   out of the box.
@@ -78,55 +155,6 @@ impl IntoTokenStream for () {
     fn into_token_stream(self) -> TokenStream {
         TokenStream::new()
     }
-}
-/// This macro embedded in generated code, to parse input into specific type.
-#[macro_export]
-macro_rules! parse_into {
-    (String => $tokens:expr) => {
-        $crate::ux::parse_string($tokens)
-    };
-    (Vec<String> => $tokens:expr) => {
-        $crate::ux::parse_vec_string($tokens)
-    };
-    ($into:ty => $tokens:expr) => {
-        <_ as syn::parse::Parse>::parse.parse2($tokens)
-    };
-}
-
-/// Implementation of parse `String` argument from `TokenStream`.
-/// Uses `syn::LitStr` under the hood.
-///
-/// So expect string literals only:
-/// ```no_build
-/// some_macro!("foo");
-/// ```
-/// # Errors
-/// - `syn::Error` - if parsing fails.
-#[allow(dead_code, reason = "used in `parse_into` generated code")]
-pub fn parse_string(tokens: TokenStream) -> syn::Result<String> {
-    let parser = <syn::LitStr as syn::parse::Parse>::parse;
-    let lit_component = parser.parse2(tokens)?;
-    Ok(lit_component.value())
-}
-
-/// Implementation of parse `Vec<String>` argument from `TokenStream`.
-/// Uses `syn::punctuated::Punctuated<syn::LitStr, syn::Token![,]>` under the hood.
-///
-/// So expect multiple string literals separated by commas:
-/// ```no_build
-/// some_macro!("foo", "bar", "baz");
-/// ```
-/// # Errors
-/// - `syn::Error` - if parsing fails.
-#[allow(dead_code, reason = "used in `parse_into` generated code")]
-pub fn parse_vec_string(tokens: TokenStream) -> syn::Result<Vec<String>> {
-    let parser = syn::punctuated::Punctuated::<syn::LitStr, syn::Token![,]>::parse_terminated;
-    let lit_components = parser.parse2(tokens)?;
-    let components = lit_components
-        .iter()
-        .map(syn::LitStr::value)
-        .collect::<Vec<_>>();
-    Ok(components)
 }
 
 fn compile_error(text: &str) -> TokenStream {
@@ -192,8 +220,8 @@ thread_local! {
 
 /// For some usages, user might want to emit output streamingly, like `println!` or `write!` macros.
 ///
-/// This function is internall implementation of this feature, for better API, use:
-/// `output`, or `output!` macros.
+/// This function is internall implementation of this feature, it's recommended to use:
+/// `output!`, or `output_str!` macros instead.
 pub fn push_output(output: impl IntoTokenStream) {
     COLLECTED_OUTPUT.with(|collected_output| {
         collected_output
@@ -204,12 +232,32 @@ pub fn push_output(output: impl IntoTokenStream) {
 
 #[doc(hidden)]
 #[must_use]
-pub fn flush_output(last_part: TokenStream) -> TokenStream {
+pub(crate) fn flush_output(last_part: TokenStream) -> TokenStream {
     COLLECTED_OUTPUT.with(|collected_output| {
         let mut collected_output = collected_output.borrow_mut();
         collected_output.extend(last_part);
         collected_output.clone()
     })
+}
+
+impl Parse for Token {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        if input.peek(syn::Ident) {
+            Ok(Token::Ident(input.parse()?))
+        } else if input.peek(syn::LitStr) {
+            Ok(Token::Literal(input.parse()?))
+        } else {
+            Err(syn::Error::new(input.span(), "Expected ident or literal"))
+        }
+    }
+}
+
+impl<T: Parse> Parse for CommaSeparated<T> {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let parser = syn::punctuated::Punctuated::<T, syn::Token![,]>::parse_terminated;
+        let components = parser(input)?;
+        Ok(CommaSeparated(components.into_iter().collect()))
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -220,27 +268,27 @@ mod tests {
     #[test]
     fn test_parse_string() {
         let tokens = TokenStream::from_str(" \"123\" ").unwrap();
-        let into: String = parse_into!(String => tokens).unwrap();
-        assert_eq!(into, "123");
+        let into: Token = tokens.convert_token_stream().unwrap();
+        assert_eq!(into.to_string(), "123");
     }
     #[test]
     fn test_parse_vec() {
         let tokens = TokenStream::from_str(" \"1\", \"2\", \"3\" ").unwrap();
-        let into: Vec<String> = parse_into!(Vec<String> => tokens).unwrap();
-        assert_eq!(into, vec!["1", "2", "3"]);
+        let into: CommaSeparated<Token> = tokens.convert_token_stream().unwrap();
+        assert_eq!(into.0, vec!["1", "2", "3"]);
     }
 
     #[test]
     fn test_parse_tts() {
         let tokens = TokenStream::from_str("123").unwrap();
-        let into: TokenStream = parse_into!(TokenStream => tokens.clone()).unwrap();
+        let into: TokenStream = tokens.clone().convert_token_stream().unwrap();
         assert_eq!(into.to_string(), tokens.to_string());
     }
 
     #[test]
     fn test_parse_syn_type() {
         let tokens = TokenStream::from_str("asd").unwrap();
-        let into: syn::Ident = parse_into!(syn::Ident => tokens.clone()).unwrap();
+        let into: syn::Ident = tokens.convert_token_stream().unwrap();
         assert_eq!(into.to_string(), "asd");
     }
 
