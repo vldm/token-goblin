@@ -307,8 +307,10 @@ pub fn load_and_run_entry(
     macro_name: &syn::Ident, // we use syn ident to recover it's span
     input: TokenStream,
 ) -> Result<TokenStream> {
-    let library = load_library(dylib_path)?;
-    let serialized_input = span_recovery::SerializedInput::serialize(&input);
+    let library = timed!("load_library", { load_library(dylib_path)? });
+    let serialized_input = timed!("serialize_input", {
+        span_recovery::SerializedInput::serialize(&input)
+    });
 
     // Safety: we know the type of entrypoint.
     let entry: libloading::Symbol<EntryFn> = unsafe { library.get(b"entry") }
@@ -321,10 +323,14 @@ pub fn load_and_run_entry(
     };
     let macro_name_str = macro_name.to_string();
     debug!("charm [{macro_name_str}] input: {print_input}");
-    let guest = entry(&macro_name_str, &serialized_input.source_text);
+    let guest = timed!("execute", {
+        entry(&macro_name_str, &serialized_input.source_text)
+    });
     debug!("output: {}", guest.text);
 
-    let res = span_recovery::hydrate(&serialized_input, &guest, macro_name.span());
+    let res = timed!("hydrate", {
+        span_recovery::hydrate(&serialized_input, &guest, macro_name.span())
+    });
 
     Ok(res)
 }

@@ -125,9 +125,84 @@ fn stringify(input: syn::Ident) -> TokenStream {
 
 </details>
 
+## Probes, and evals
+
+The other common cases for macros is to precomupte some data.
+`crabtime` provides `eval` macro for this purpose.
+
+But with token-goblin, you can implement it by yourself:
+```rust
+macro_rules! eval {
+    ($($expr:tt)*) => {
+        {
+            #[token_goblin::munch(lazy)]
+            fn eval_inner(_: TokenStream) -> TokenStream {
+                use std::str::FromStr;
+                let x = $($expr)*;
+                TokenStream::from_str(&format!("{}", x)).unwrap()
+            }
+            eval_inner!($($expr)*)
+        }
+    };
+}
+
+fn main() {
+    // Example from crabtime docs:
+    let x = eval!((std::f32::consts::PI.sqrt() * 10.0).round() as usize);
+    println!("x: {x}");
+}
+// prints:
+// x: 18
+```
+
+<details>
+<summary>Some cursed examples of using proc-macros</summary>
+
+But you are not limited to simple expressions, in fact you can do any compile-time execution, like
+evaluating bytecodes, or even downloading something from the internet (using external states in macro is not recommended though).
+
+e.g. from [examples/brainfuck.rs](token-goblin/examples/brainfuck.rs)
+```rust
+#[token_goblin::munch]
+mod brainfuck {
+    pub fn execute(input: ProgramInput) -> TokenStream {
+        // ..
+    }
+
+    pub fn request_and_execute(input: ProgramInput) -> TokenStream {
+        // Handle program field as URL.
+        let url = String::from_utf8(input.program.value()).unwrap();
+        let program = reqwest::blocking::get(url).unwrap().text().unwrap();
+        execute(ProgramInput {
+            program: syn::LitByteStr::new(&program.as_bytes(), Span::call_site()),
+            input: input.input,
+        })
+    }
+}
+```
+
+```rust
+    let result = brainfuck::request_and_execute!(b"https://gist.githubusercontent.com/vldm/f796f0d6235a608c0bed5957d146f8c0/raw/a068d4a8b2764fbc02b909322f31321b1b7eb7fc/reverse.bf", b"\n!dlroW olleH");
+    println!("result: {result}");
+    // downloads: ">,[>,]<[.<]" program that reverses input
+    // prints:
+    // result: Hello World!
+```
+
+While executing brainfuck program, is pure-functional and therefore fits well to `proc-macro` purposes, using system API and requesting external data is clearly misuse. But the whole crate is experiments around `proc-macro`, so i think it's fun to
+showcase it as well.
+
+Note: While `token-goblin` itself doesn't cache the output of `charms`, the rust itself might cache them, especially when `-Zcache-proc-macros` is enabled.
+
+Note: I there is a plan to implement `wasm` as feature that will enforce sandboxing of `charms`.
+
+</details>
+
+
 ## Rewriting declarative macros to proc-macro API
 
-While proc-macro API is more Rust-like and powerful, working with TokenStream introduce some boilerplate, and some macros should be kept as declarative.
+While proc-macro API is more Rust-like and powerful, one might want to rewrite all declarative macros to proc-macro API.
+But working with TokenStream introduce some boilerplate, and some macros should be kept as declarative.
 
 <details>
 <summary>Example of TTs muncher rewrite as example</summary>
@@ -264,6 +339,37 @@ While proc-macro API is more Rust-like and powerful, working with TokenStream in
 
 </details>
 
+With `token-goblin` you don't need to chose, since it allows you to combine both approaches.
+
+e.g. writing declarative macro as facade that will check patterns, and compute results in `proc-macro` API.
+```rust
+#[token_goblin::munch]
+pub fn stringify_any(input: TokenStream) -> TokenStream {
+    let string = input.to_string();
+    quote! {
+        #string
+    }
+}
+
+macro_rules! stringify_ident {
+    ($ident:ident) => {
+        stringify_any!($ident)
+    };
+}
+
+fn main() {
+    // this will fail at compile time, due to wrong input pattern
+    // let result = stringify_ident!("non ident");
+    // let result = stringify_ident!(foo asd);
+    let result = stringify_ident!(foo);
+    println!("result: {result}");
+}
+```
+Uncommenting non ident expansions will fail at compile time:
+![fails](assets/decl-proc-fail.png)
+
+Combining both approaches you can have both pros of using `declarative` and `proc-macro` macros:
+
 # Questions
 
 ## Why it's named Token Goblin?
@@ -281,14 +387,32 @@ Also the idea of "some magical entity that eats tokens" looks like a good metaph
 1. Because `munch` and `spit` fit well in "goblin" lore.
 2. I think that `#[munch] fn` would be a good replacement for existing [TTs muncher](https://lukaswirth.dev/tlborm/decl-macros/patterns/tt-muncher.html) - technique of writing recursive declarative macros, to parse complex input.
 
-## Compare with other solutions
+## Why not use `crabtime` or `inline-proc`?
 
-### crabtime
-- Recompile each macro on call site
-- Don't work with build-dir cache 
+They both looks notmaintained.
 
-### inline-proc
-- No simple one function macro. 
+`inline-proc` uses syn 1.0 and no updates for ~5-6 years. And doesn't compile anymore on modern rust versions.
+
+I have tried to contribute to `crabtime` https://github.com/wdanilo/crabtime/issues?q=author%3Avldm
+But looks like author is not interested in maintaining it anymore. There still issues related to build-cache.
+
+`token-goblin` combines all the features from both `crabtime` and `inline-proc`, like:
+- using dylib to load proc-macro definition
+- support for workspace dependencies
+- support for attributes and derive macros helpers
+- mod and fn entrypoints
+
+ and adds some extra:
+- Emit ide helper for Rust-Analyzer completion [ide-helper](token-goblin/src/ide_support.rs)
+- Allow span information to be preserved in output [span_recovery](token-goblin/src/span_recovery.rs)
+- Convert any panic to compile error [panic](runtime/src/wire.rs#L185)
+- Extendable interface for input and output [ux](runtime/src/ux.rs)
+
+And planned more:
+- Mapping panics/compile errors to `compile_error!` should show any error in right source location.
+- Support for `wasm` as feature that will enforce sandboxing of `charms`.
+- "reflection" like macro, to store tokens of some items, and use them as input to another macro.
+
 
 ## Testing
 
@@ -302,10 +426,11 @@ cargo test -p token-goblin --test fixtures
 
 
 
-## Offline build
-
-Note: `token-goblin-runtime` is hardcoded dependency of generated crates, and might be not downloaded using `cargo fetch` or `cargo vendor`, in order to build offline, add `token-goblin-runtime` to `[dev-dependencies]` in your `Cargo.toml`.
-
 # Ceveats:
 - only `proc-macro2::fallback` is used (no `proc-macro` api is available) in generated crates (which introduce some limitations)
 - mixed_site - is not supported by `proc_macro2::fallback`
+- we use `dev-dependencies` for `charms` dependencies, which cannot be optional (by design of cargo resolver), so one small macro may increase compile time by rebuilding all `dev-dependencies`.
+
+## Offline build
+
+Note: `token-goblin-runtime` is hardcoded dependency of generated crates, and might be not downloaded using `cargo fetch` or `cargo vendor`, in order to build offline, add `token-goblin-runtime` to `[dev-dependencies]` in your `Cargo.toml`.

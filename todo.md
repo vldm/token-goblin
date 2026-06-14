@@ -21,20 +21,21 @@ UX:
 
 - [ ] Extend spit interface to receive some extra params `#[charm(via = macro)]`, and params like `#[charm(other = ..)]`, for attribute like receive args in format `#[spit(macro(args,..))]`
 - [ ] Implement Snif 
-- [ ] Allow extending interface (like in crabtime), e.g. input: (`TokenStream`, String, Vec, or `syn::Parsable` types), 
-- [ ] Allow output to be created streamingly, like `println!`
+- [x] Allow extending interface (like in crabtime), e.g. input: (`TokenStream`, String, Vec, or `syn::Parsable` types), 
+- [x] Allow output to be created streamingly, like `println!`
 
 
 Features:
 - [ ] support `entry(TokenStream, TokenStream) -> TokenStream` for attributes and derive.
 - [ ] `Reflect!<Type>` - allows collecting derive macro, and extend it in future.
+- [ ] Implement better diagnostics, e.g. panic handling, and cargo errors should be converted to spans and passed as compile errors.
+- [ ] Support of `mod X` in `#[munch] mod foo { .. }` should import module related to foo, from external file only.
+- [ ] Optional dependencies.
 
 Consider this:
 - [ ] Use wasm for libraries
 - [x] Support module resolution ?
-- [ ] Support of `mod X` in `#[munch] mod foo { .. }` should import module related to foo, from external file only.
+- [ ] Add from source_text macro (without spans, but that allow saving original text)
 
 Nice to have:
-- [ ] Pass cargo build errors and diagnostics.
 - [ ] check compatibility of `cache-proc-macros` and extern `mod X` 
-- [ ] Add from source_text macro (without spans, but that allow saving original text)

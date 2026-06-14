@@ -1,3 +1,8 @@
+//! Get more detailed information about source location, like:
+//! - module path like macro `std::module_path!`, but with ability to handle it.
+//! - file path to the current module file.
+//! - target root directory.
+//! 
 #![allow(unused)]
 use std::{
     collections::BTreeMap,

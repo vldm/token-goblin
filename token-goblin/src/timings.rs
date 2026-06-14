@@ -27,7 +27,7 @@ pub(crate) fn save_timing(name: &'static str, duration: std::time::Duration) {
         timings.borrow_mut().push((name, duration));
     });
     // We measure only at end, if it's root macro - print all timings.
-    let is_root = matches!(name, "munch" | "proxy" | "spit" | "snif");
+    let is_root = matches!(name, "munch" | "proxy" | "spit" | "spit_derive" | "snif");
     if is_root && crate::PRINT_TIMINGS {
         print_timings();
     }
