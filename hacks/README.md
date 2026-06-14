@@ -78,13 +78,42 @@ fn foo(input: TokenStream) -> TokenStream {
 }
 ``` 
 
+# Recovering span information
+
+TBD
 
 
 ## `derive-attr-helper`
 Shows, how helper can convert function-like macros into attributes or derives.
 
 ## `macro-callback`
-Shows, how to provide token stream from one macro to another.
+
+Sometimes you need to pass outputs of one macro to another.
+passing it like this:
+```rust
+macro_rules! foo { ... }
+
+stringify!(foo!(...))
+```
+will produce string literal `foo!(...)` instead of firstly expanding `foo!` macro.
+
+Instead of this one can write a `foo` macro that receives path to other macro:
+```rust 
+macro_rules! foo {
+    ($path:ident => $($tt:tt)*) => {
+        $path!($($tt)*)
+    };
+}
+
+foo!(stringify => ...);
+```
+
+which will expand to:
+```rust
+stringify!(...)
+```
+
+This technique allow some level of modularity in macros.
 
 ## `reflect`
 Shows, how we can collect some information, and then use it in other macros.

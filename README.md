@@ -368,8 +368,8 @@ fn main() {
 Uncommenting non ident expansions will fail at compile time:
 ![fails](assets/decl-proc-fail.png)
 
-Combining both approaches you can have both pros of using `declarative` and `proc-macro` macros:
-
+There still old but good crate `proc-macro-rules` that allows you to use declarative macros patterns directly in proc-macro API.
+ 
 # Questions
 
 ## Why it's named Token Goblin?

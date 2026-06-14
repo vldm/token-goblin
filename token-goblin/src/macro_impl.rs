@@ -1,8 +1,8 @@
-use std::{fmt::Debug, path::PathBuf, str::FromStr};
+use std::{fmt::Debug, iter, path::PathBuf, str::FromStr};
 
 use proc_macro2::{Delimiter, Group, Span, TokenStream, TokenTree};
 use quote::{ToTokens, format_ident, quote, quote_spanned};
-use syn::{Attribute, Token, spanned::Spanned};
+use syn::{Attribute, Token, punctuated::Punctuated, spanned::Spanned};
 
 use crate::{
     Result,
@@ -70,15 +70,15 @@ pub enum Lazieness {
 /// ```
 #[derive(Copy, Clone, Debug)]
 pub struct Config {
-    // If set to false, we add source-hash to output path
-    // This enforces recompilation of the macro for each change in the source code.
+    /// If set to false, we add source-hash to output path
+    /// This enforces recompilation of the macro for each change in the source code.
     pub incremental: bool,
-    // If set to lazy, build is done on proxy side.
-    // This is default for IDE expansion, and can be (experimentally) enforced per macro.
+    /// If set to lazy, build is done on proxy side.
+    /// This is default for IDE expansion, and can be (experimentally) enforced per macro.
     pub lazy: Lazieness,
-    // whether we need to use per crate `build-dir`
+    /// whether we need to use per crate `build-dir`
     pub split_cache: bool,
-    // Cargo build profile
+    /// Cargo build profile
     pub profile: BuildProfile,
 }
 
@@ -97,6 +97,16 @@ pub struct Config {
 /// ```
 struct SpitArgs {
     pub list_of_macros: Vec<syn::Path>,
+}
+
+// The input to `snif` macro.
+pub struct SnifInput {
+    /// User called macro like this: `snif!(MyStruct, OtherStruct in some_macro!("extra tokens"))`
+    chain: Punctuated<syn::Path, Token![,]>,
+    _in_token: Token![in],
+    macro_path: syn::Path,
+    _exclamation: Token![!],
+    macro_args: proc_macro2::Group,
 }
 
 // ===============================
@@ -183,6 +193,91 @@ pub fn spit_derive_impl(input: TokenStream) -> Result<TokenStream> {
     Ok(quote! {
         #(#list_of_macros!{#original_input})*
     })
+}
+/// Generate macro with same name
+#[allow(clippy::needless_pass_by_value, reason = "consistent api")]
+pub fn snif_impl(input: TokenStream) -> Result<TokenStream> {
+    // TODO: Give user a way to customize the macro name.
+    // TODO: Rewrite to some simpler form, cause we only need a name and visibility of item.
+    let any_item = syn::parse2::<syn::Item>(input.clone())?;
+
+    let (visibility, name) = match any_item {
+        syn::Item::Fn(item) => (item.vis, item.sig.ident),
+        syn::Item::Mod(item) => (item.vis, item.ident),
+        syn::Item::Struct(item) => (item.vis, item.ident),
+        syn::Item::Enum(item) => (item.vis, item.ident),
+        syn::Item::Union(item) => (item.vis, item.ident),
+        syn::Item::Trait(item) => (item.vis, item.ident),
+        _ => bail!(any_item.span() => "Expected function, module, struct, enum, or trait"),
+    };
+    let macro_glob = if matches!(visibility, syn::Visibility::Public(_)) {
+        quote! {#[macro_export]}
+    } else {
+        quote! {}
+    };
+
+    let macro_name = format_ident!("{}_{}", name, postfix_hash(name.span()));
+
+    let res = quote! {
+        #macro_glob
+        #[doc(hidden)]
+        #[allow(unused)]
+        macro_rules! #macro_name {
+            (@token_goblin [($($next:tt)+) $(=> $rest:tt)*] [$($other:tt)*]) => {
+                $($next)+! (@token_goblin
+                    [$($rest)*]
+                    [
+                        $($other)*
+                        {#input}
+                    ]
+                )
+            };
+            // empty input, just return input tokens.
+            () => {
+                #input
+            };
+            ($($any:tt)*) => {core::compile_error!("This macro should be used only from token-goblin::snif")};
+        }
+
+        #visibility use #macro_name as #name;
+    };
+    Ok(res)
+}
+
+pub fn snif_expand_impl(input: TokenStream) -> Result<TokenStream> {
+    debug!("snif expand input: {}", input);
+    let SnifInput {
+        chain,
+        macro_path,
+        macro_args,
+        ..
+    }: SnifInput = syn::parse2(input)?;
+
+    let chain_of_macros = chain
+        .iter() // all macros in users chain
+        .map(ToTokens::to_token_stream)
+        // the end macro itself
+        // repeat it once more, to allow macro_call itself with normalized arguments
+        .chain(iter::repeat_n(macro_path.to_token_stream(), 2))
+        .collect::<Vec<_>>();
+
+    let (first, rest) = chain_of_macros
+        .split_first()
+        .expect("at least snif should exist");
+
+    let macro_args = macro_args.stream();
+
+    let x = quote! {
+        #first!
+         {
+            @token_goblin
+            [#( (#rest) ) => *] // the list of macros to chain
+            [#macro_args ] // collected arguments
+        }
+    };
+
+    debug!("snif expanded: {}", x);
+    Ok(x)
 }
 
 // ===============================
@@ -452,6 +547,19 @@ fn expand_entries(
             quote! {}
         };
 
+        let snif_branch = quote! {
+            // The task of this branch is to normalize the input
+            // (@token_goblin [($($next:tt)+) $(=> $rest:tt)*] [$($other:tt)*]) => {
+            (@token_goblin [($($me:tt)*)] // the list of macros to chain
+            [$($macro_args:tt)*] ) => {
+                $($me)*! {$($macro_args)*}
+            }; // collected arguments
+            (@token_goblin [$($more:tt)*] $($any:tt)*) => {
+                core::compile_error!(
+                    concat!("Unexpected input in token-goblin::snif", "got extra chains: ", stringify!($($more:tt)*)))
+            };
+        };
+
         let name = &entry.sig.ident;
         let postfix = postfix_hash(name.span());
         let mod_name_str = mod_name.to_string();
@@ -461,6 +569,7 @@ fn expand_entries(
             #[doc(hidden)]
             #[allow(unused)]
             macro_rules! #macro_name {
+                #snif_branch
                 ($($args:tt)*) => {
                     #crate_proxy{#proxy_input, $($args)*}
                 };
@@ -611,6 +720,35 @@ impl syn::parse::Parse for SpitArgs {
             let _ = input.parse::<TokenTree>()?;
         }
         Ok(Self { list_of_macros })
+    }
+}
+
+impl syn::parse::Parse for SnifInput {
+    fn parse(input: syn::parse::ParseStream) -> Result<Self> {
+        let parse_punctuated_until_in =
+            |input: syn::parse::ParseStream| -> Result<Punctuated<syn::Path, Token![,]>> {
+                let mut punctuated = Punctuated::new();
+
+                loop {
+                    let value = syn::Path::parse(input)?;
+                    punctuated.push_value(value);
+                    if input.peek(Token![in]) {
+                        break;
+                    }
+                    let punct = input.parse()?;
+                    punctuated.push_punct(punct);
+                }
+
+                Ok(punctuated)
+            };
+
+        Ok(SnifInput {
+            chain: parse_punctuated_until_in(input)?,
+            _in_token: input.parse()?,
+            macro_path: input.parse()?,
+            _exclamation: input.parse()?,
+            macro_args: input.parse()?,
+        })
     }
 }
 fn lit_to_bool(lit: syn::Lit) -> Result<bool> {
