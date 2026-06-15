@@ -83,6 +83,6 @@ pub fn emit_ide_helper_mod(template_context: &TemplateContext) -> TokenStream {
     }
 }
 
-pub fn is_lazy(config: Config) -> bool {
+pub fn is_lazy(config: &Config) -> bool {
     config.lazy == Lazieness::Enforced || (config.lazy == Lazieness::Default && is_ide())
 }

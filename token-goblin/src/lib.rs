@@ -106,16 +106,19 @@ pub fn munch(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// struct MyStruct {
 ///   field: i32,
 /// }
-/// ```
 ///
-/// And use it like this:
-/// ```
-/// token_goblinsnif!(MyStruct in some_macro!("extra tokens") )
+/// // And use it like this:
+///
+/// # macro_rules! some_macro {
+/// #   ($($tt:tt)*) => { }
+/// # }
+///
+/// token_goblin::snif!(MyStruct in some_macro!("extra tokens") );
 /// ```
 ///
 /// This will feed declaration of `MyStruct` as group of tokens inside `{..}`
 /// to `some_macro!`, and pass `"extra tokens"` as arguments before it.
-/// ```
+/// ```no_compile
 /// some_macro!( "extra tokens" { struct MyStruct { field : i32, } })
 /// ```
 ///
@@ -133,7 +136,7 @@ pub fn derive_snif_impl(input: TokenStream) -> TokenStream {
 /// Use
 /// ```
 /// #[token_goblin::derive_snif]
-/// fn my_function(_: TokenStream) -> TokenStream {
+/// fn my_function(_: u32) -> String {
 ///   //..
 ///  # todo!()
 /// }
@@ -162,7 +165,7 @@ pub fn derive_snif(_attr: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// But you can generate it at any time, by calling generated `MyStruct!` macro.
 /// ```
-/// /// #[token_goblin::vanish]
+/// #[token_goblin::vanish]
 /// # struct MyStruct {
 /// #  field: i32,
 /// # }

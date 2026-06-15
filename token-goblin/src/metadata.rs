@@ -13,7 +13,7 @@ use std::path::{Component, Path, PathBuf};
 use proc_macro2::Span;
 
 use crate::{
-    Result,
+    Result, macro_impl,
     path::{manifest_path, search_for_parent_manifest},
 };
 type TomlTable = toml::map::Map<String, toml::Value>;
@@ -26,22 +26,25 @@ pub fn cargo_crate_name(name: &str) -> String {
 // Whether value set, or uses workspace version
 #[derive(Debug)]
 pub enum ValueOrWorkspace {
-    Value(toml::Value),
-    #[allow(unused)]
-    Workspace {
-        extra: TomlTable,
+    Value {
+        value: toml::Value,
+        /// Save `Cargo.toml` location in case if `path` version is used.
+        rel_path: PathBuf,
     },
+    #[allow(unused)]
+    Workspace { extra: TomlTable },
 }
 impl ValueOrWorkspace {
-    fn from_value(value: toml::Value) -> Result<Self> {
+    fn from_parts(value: toml::Value, rel_path: PathBuf) -> Result<Self> {
         Ok(if is_workspace(&value) {
+            // strange if workspace dep have a path?
             let extra = value
                 .as_table()
                 .ok_or_else(|| error!(Span::call_site() => "Failed to convert to table"))?
                 .clone();
             Self::Workspace { extra }
         } else {
-            Self::Value(value)
+            Self::Value { value, rel_path }
         })
     }
 }
@@ -58,23 +61,75 @@ pub struct Metadata {
     pub dependencies: Vec<Dependency>,
 }
 impl Metadata {
-    fn from_manifest(manifest_path: &Path) -> Result<Self> {
+    fn from_manifest(
+        manifest_path: &Path,
+        extra_metadata: &macro_impl::ExtraMetadata,
+    ) -> Result<Self> {
         let manifest: toml::Value = read_toml_file(manifest_path)?;
 
-        let dependencies = match manifest.get("dev-dependencies").and_then(|v| v.as_table()) {
+        let whitelisted_deps = extra_metadata.dependencies.clone();
+        let is_strict = extra_metadata.strict_dependencies;
+        let strict_whitelist = |(name, _): &(&String, &toml::Value)| {
+            if is_strict {
+                whitelisted_deps.contains(*name)
+            } else {
+                true
+            }
+        };
+
+        let mut dependencies = match manifest.get("dev-dependencies").and_then(|v| v.as_table()) {
             Some(dependencies) => dependencies
                 .iter()
                 .filter(|(name, _)| *name != "token-goblin-runtime")
+                .filter(strict_whitelist)
                 .map(|(name, value)| {
                     Dependency::new(name.clone(), manifest_path.to_path_buf(), value.clone())
                 })
                 .collect::<Result<Vec<Dependency>>>()?,
             None => Vec::new(),
         };
+
+        let remove_optional = |value: &mut toml::Value| {
+            if let toml::Value::Table(table) = value {
+                table.remove("optional");
+            }
+        };
+        // Add dependencies from `dependencies` section.
+        // ensure to remove `optional` field from dependencies.
+        dependencies.extend(
+            match manifest.get("dependencies").and_then(|v| v.as_table()) {
+                Some(dependencies) => dependencies
+                    .iter()
+                    .filter(|(name, _)| whitelisted_deps.contains(*name))
+                    .map(|(name, value)| {
+                        let mut new_value = value.clone();
+                        remove_optional(&mut new_value);
+                        Dependency::new(name.clone(), manifest_path.to_path_buf(), new_value)
+                    })
+                    .collect::<Result<Vec<Dependency>>>()?,
+                None => Vec::new(),
+            },
+        );
+
+        if extra_metadata.skip_duplicate {
+            // the sort is stable, mean dev-dependencies will be before dependencies.
+            dependencies.sort_by_cached_key(|dependency| dependency.name.clone());
+            dependencies.dedup_by(|a, b| a.name == b.name);
+        }
+
+        // Add remaining dependencies to the candidates from workspace resolution.
+        let mut remaining_deps = whitelisted_deps;
+        for dependency in &dependencies {
+            remaining_deps.remove(dependency.name.as_str());
+        }
+        for name in remaining_deps {
+            dependencies.push(Dependency::new_from_workspace(name.clone()));
+        }
         Ok(Metadata { dependencies })
     }
     fn try_resolve_workspace_dependency(
         &mut self,
+        workspace_path: &Path,
         workspace_dependencies: &toml::map::Map<String, toml::Value>,
     ) -> Result<()> {
         for dependency in &mut self.dependencies {
@@ -86,7 +141,10 @@ impl Metadata {
                 bail!(Span::call_site() => "Workspace dependency not found");
             };
             // TODO: add extra knowledge from workspace dependency.
-            dependency.value = ValueOrWorkspace::from_value(workspace_dependency.clone())?;
+            dependency.value = ValueOrWorkspace::from_parts(
+                workspace_dependency.clone(),
+                workspace_path.to_path_buf(),
+            )?;
         }
         Ok(())
     }
@@ -104,8 +162,6 @@ impl Metadata {
 #[derive(Debug)]
 pub struct Dependency {
     pub name: String,
-    /// Save `Cargo.toml` location in case if `path` version is used.
-    pub rel_path: PathBuf,
     pub value: ValueOrWorkspace,
 }
 
@@ -113,13 +169,21 @@ impl Dependency {
     pub fn new(name: String, rel_path: PathBuf, value: toml::Value) -> Result<Self> {
         Ok(Self {
             name,
-            rel_path,
-            value: ValueOrWorkspace::from_value(value)?,
+            value: ValueOrWorkspace::from_parts(value, rel_path)?,
         })
+    }
+    // No dependency in package manifest, but we expect it to be in workspace.
+    pub fn new_from_workspace(name: String) -> Self {
+        Self {
+            name,
+            value: ValueOrWorkspace::Workspace {
+                extra: TomlTable::new(),
+            },
+        }
     }
     fn is_workspace(&self) -> bool {
         match &self.value {
-            ValueOrWorkspace::Value(_) => false,
+            ValueOrWorkspace::Value { .. } => false,
             ValueOrWorkspace::Workspace { extra: _ } => true,
         }
     }
@@ -127,15 +191,16 @@ impl Dependency {
 
 /// Load `dev-dependencies` section of `Cargo.toml`.
 /// Used on expansion of macro definition (aka `munch` macro)
-pub fn load_dependencies() -> Result<Metadata> {
+pub fn load_dependencies(extra_metadata: &macro_impl::ExtraMetadata) -> Result<Metadata> {
     let manifest_path = manifest_path()?;
-    let mut metadata = Metadata::from_manifest(&manifest_path)?;
+    let mut metadata = Metadata::from_manifest(&manifest_path, extra_metadata)?;
 
     if !metadata.has_workspace_dependency() {
         return Ok(metadata);
     }
     // resolve workspace dependencies
-    let Some((workspace_manifest, _)) = find_workspace_manifest(&manifest_path)? else {
+    let Some((workspace_manifest, workspace_path)) = find_workspace_manifest(&manifest_path)?
+    else {
         return Err(error!(
             Span::call_site() =>
             "Dependency uses workspace inheritance, but no containing workspace manifest was found"
@@ -148,7 +213,13 @@ pub fn load_dependencies() -> Result<Metadata> {
     else {
         return Err(error!(Span::call_site() => "Workspace table not found"));
     };
-    metadata.try_resolve_workspace_dependency(workspace_table)?;
+
+    let workspace_dependencies = workspace_table
+        .get("dependencies")
+        .and_then(|v| v.as_table())
+        .cloned()
+        .unwrap_or_default();
+    metadata.try_resolve_workspace_dependency(&workspace_path, &workspace_dependencies)?;
 
     if let Some(dependency) = metadata.workspace_dependencies().next() {
         return Err(

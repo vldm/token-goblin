@@ -1157,6 +1157,7 @@ name = "token-goblin"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "heck",
  "libloading",
  "proc-macro2",
  "quote",

@@ -199,7 +199,9 @@ fn render_dependencies(metadata: &Metadata) -> Result<String> {
 
 fn render_dependency(dep: &Dependency) -> Result<String> {
     match &dep.value {
-        ValueOrWorkspace::Value(value) => render_value_dependency(&dep.name, value, &dep.rel_path),
+        ValueOrWorkspace::Value { value, rel_path } => {
+            render_value_dependency(&dep.name, value, rel_path)
+        }
         ValueOrWorkspace::Workspace { .. } => bail!(
             "dependency `{}` still uses unresolved workspace inheritance",
             dep.name

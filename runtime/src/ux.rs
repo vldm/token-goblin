@@ -20,9 +20,9 @@
 //!
 //! One could write:
 //! ```
-//!
 //! # use proc_macro2::TokenStream;
 //! # use syn::parse::Parser;
+//! # use token_goblin_runtime::prelude::*;
 //!
 //! fn foo(components: CommaSeparated<Token>) -> TokenStream {
 //!    // Handling of `components`

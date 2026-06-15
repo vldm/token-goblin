@@ -26,8 +26,8 @@ UX:
 
 
 Features:
-- [ ] support `entry(TokenStream, TokenStream) -> TokenStream` for attributes and derive.
-- [ ] `Reflect!<Type>` - allows collecting derive macro, and extend it in future.
+- [X] ~~ support `entry(TokenStream, TokenStream) -> TokenStream` for attributes and derive~~ Decided to skip it, since it's already possible to write custom `syn::parse::Parse` implementation for input.
+- [x] `Reflect!<Type>` - allows collecting derive macro, and extend it in future. = `#[snif]`
 - [ ] Implement better diagnostics, e.g. panic handling, and cargo errors should be converted to spans and passed as compile errors.
 - [ ] Support of `mod X` in `#[munch] mod foo { .. }` should import module related to foo, from external file only.
 - [ ] Optional dependencies.

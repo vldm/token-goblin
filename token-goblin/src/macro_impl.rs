@@ -1,8 +1,8 @@
-use std::{fmt::Debug, iter, path::PathBuf, str::FromStr};
+use std::{collections::HashSet, fmt::Debug, iter, path::PathBuf, str::FromStr};
 
 use proc_macro2::{Delimiter, Group, Span, TokenStream, TokenTree};
 use quote::{ToTokens, format_ident, quote, quote_spanned};
-use syn::{Attribute, Token, punctuated::Punctuated, spanned::Spanned};
+use syn::{Attribute, Token, parse::Parser, punctuated::Punctuated, spanned::Spanned};
 
 use crate::{
     Result,
@@ -58,6 +58,26 @@ pub enum Lazieness {
     #[default]
     Default,
 }
+
+/// Part of config.
+/// Specify how to extend `Cargo.toml` for generated crate.
+
+#[derive(Clone, Debug, Default)]
+pub struct ExtraMetadata {
+    ///
+    /// List of dependencies to include in generated crate.
+    ///
+    /// By default we use only `[dev-dependencies]` in generated crate,
+    /// and any entry in this list will be additionally searched in `[dependencies]` section.
+    ///
+    pub dependencies: HashSet<String>,
+    /// If set to true, only set `dependencies` will be used.
+    pub strict_dependencies: bool,
+    /// If set, duplicate dependencies would be filtered out.
+    /// In case if depdendency was declared in dev-dependencies, and in dependencies,
+    /// only dev-dependency will be used.
+    pub skip_duplicate: bool,
+}
 /// Configuration of `munch` macro.
 /// provided as extra arguments:
 /// ```
@@ -68,7 +88,7 @@ pub enum Lazieness {
 /// }
 ///
 /// ```
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct Config {
     /// If set to false, we add source-hash to output path
     /// This enforces recompilation of the macro for each change in the source code.
@@ -80,6 +100,16 @@ pub struct Config {
     pub split_cache: bool,
     /// Cargo build profile
     pub profile: BuildProfile,
+
+    /// Extra metadata to include in generated crate.
+    ///
+    /// Extend config with next options:
+    /// - `dependencies` - list of dependencies to include in generated crate.
+    /// - `strict_dependencies` - if set, only dependencies from `dependencies` section will be used.
+    /// - `skip_duplicate_dependencies` - if set, duplicate dependencies will be filtered out.
+    ///   In case if depdendency was declared in dev-dependencies, and in dependencies,
+    ///   only dev-dependency will be used.
+    pub extra_metadata: ExtraMetadata,
 }
 
 /// Arguments to `Spit` derive macro.
@@ -117,9 +147,10 @@ pub fn munch_impl(args: TokenStream, item_tts: TokenStream) -> Result<TokenStrea
     let config = Config::from_attrs(args.clone())?;
 
     let item = syn::parse2::<syn_items::Item>(item_tts.clone())?;
-    let context = build_template(item)?;
+    let source_metadata = metadata::load_dependencies(&config.extra_metadata)?;
+    let context = build_template(item, source_metadata)?;
 
-    if is_lazy(config) {
+    if is_lazy(&config) {
         let mod_name = context
             .mod_name
             .as_ref()
@@ -162,7 +193,8 @@ pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenS
         ProxyMode::Lazy { config, src } => {
             let config = Config::from_attrs(config.stream())?;
             let input: syn_items::Item = syn::parse2(src.stream())?;
-            let template = build_template(input)?;
+            let source_metadata = metadata::load_dependencies(&config.extra_metadata)?;
+            let template = build_template(input, source_metadata)?;
             let build_result = BuildContext::render_and_compile(template, config)?;
 
             if !build_result.compile_error.is_empty() {
@@ -296,11 +328,14 @@ pub fn snif_impl(input: TokenStream) -> Result<TokenStream> {
 // ===============================
 // Integration glue of multiple components
 // ===============================
-fn build_template(item: syn_items::Item) -> Result<TemplateContext> {
+fn build_template(
+    item: syn_items::Item,
+    source_metadata: metadata::Metadata,
+) -> Result<TemplateContext> {
     let template = timed!("build_template", {
         match item {
-            syn_items::Item::Fn(item) => TemplateContext::from_fn(item),
-            syn_items::Item::Mod(item) => TemplateContext::from_mod(item),
+            syn_items::Item::Fn(item) => TemplateContext::from_fn(item, source_metadata),
+            syn_items::Item::Mod(item) => TemplateContext::from_mod(item, source_metadata),
             v @ syn_items::Item::Verbatim(_) => {
                 bail!(v.span() => "Expected function or module" )
             }
@@ -320,7 +355,7 @@ fn build_template(item: syn_items::Item) -> Result<TemplateContext> {
     Ok(template)
 }
 
-fn render_template(context: &TemplateContext, config: Config) -> Result<GeneratedCrate> {
+fn render_template(context: &TemplateContext, config: &Config) -> Result<GeneratedCrate> {
     timed!("render_template", {
         let (output_dir, stable) = path::calculate_generated_path(context.name_span());
 
@@ -343,7 +378,8 @@ fn render_template(context: &TemplateContext, config: Config) -> Result<Generate
 }
 
 impl TemplateContext {
-    fn from_fn(item: syn_items::ItemFn) -> Result<Self> {
+    #[allow(clippy::unnecessary_wraps, reason = "consistent api")]
+    fn from_fn(item: syn_items::ItemFn, source_metadata: metadata::Metadata) -> Result<Self> {
         let name = &item.sig.ident;
         let package_name = format!("token-goblin-{}", name.to_string().replace('_', "-"));
 
@@ -356,7 +392,7 @@ impl TemplateContext {
         let context = TemplateContext {
             package_name: package_name.clone(),
             package_extra: String::new(),
-            source_metadata: metadata::load_dependencies()?,
+            source_metadata,
             generated_content,
             entries: vec![item],
 
@@ -379,7 +415,7 @@ impl TemplateContext {
         }
     }
 
-    fn from_mod(mod_item: syn_items::ItemMod) -> Result<Self> {
+    fn from_mod(mod_item: syn_items::ItemMod, source_metadata: metadata::Metadata) -> Result<Self> {
         let name = &mod_item.ident;
         let package_name = format!("token-goblin-{}", name.to_string().replace('_', "-"));
 
@@ -404,7 +440,7 @@ impl TemplateContext {
         Ok(TemplateContext {
             package_name: package_name.clone(),
             package_extra: String::new(),
-            source_metadata: metadata::load_dependencies()?,
+            source_metadata,
             entries,
             generated_content: quote! { #(#content)* },
 
@@ -425,7 +461,7 @@ impl BuildContext {
     /// Build crate from template as dylib.
     /// Use name to calculate output path, and include source hash if needed.
     pub fn render_and_compile(template_context: TemplateContext, config: Config) -> Result<Self> {
-        let generated = render_template(&template_context, config)?;
+        let generated = render_template(&template_context, &config)?;
         let dylib_error = timed!("compile_crate", {
             dylib::compile_crate(&generated, config.profile)
         });
@@ -675,24 +711,36 @@ impl syn::parse::Parse for Config {
             let key = input.parse::<syn::Ident>()?;
             let value = if input.peek(syn::Token![=]) {
                 input.parse::<syn::Token![=]>()?;
-                input.parse::<syn::Lit>()?
+                input.parse::<TokenTree>()?
             } else {
-                syn::Lit::Bool(syn::LitBool::new(true, key.span()))
+                TokenTree::Ident(syn::Ident::new("true", key.span()))
             };
 
             match key.to_string().as_str() {
-                "incremental" => config.incremental = lit_to_bool(value)?,
-                "split_cache" => config.split_cache = lit_to_bool(value)?,
+                "incremental" => config.incremental = parse_lit_bool(value)?,
+                "split_cache" => config.split_cache = parse_lit_bool(value)?,
                 "lazy" => {
-                    config.lazy = if lit_to_bool(value)? {
+                    config.lazy = if parse_lit_bool(value)? {
                         Lazieness::Enforced
                     } else {
                         Lazieness::Disabled
                     }
                 }
+                "dependencies" => {
+                    config
+                        .extra_metadata
+                        .dependencies
+                        .extend(parse_array_lit_str(value)?);
+                }
+                "strict_dependencies" => {
+                    config.extra_metadata.strict_dependencies = parse_lit_bool(value)?;
+                }
+                "skip_duplicate_dependencies" => {
+                    config.extra_metadata.skip_duplicate = parse_lit_bool(value)?;
+                }
                 "profile" => {
                     config.profile =
-                        lit_to_string(value).and_then(|s| BuildProfile::from_str(&s))?;
+                        parse_lit_str(value).and_then(|s| BuildProfile::from_str(&s))?;
                 }
                 _ => bail!(key.span() => "Unknown key: {}", key),
             }
@@ -764,19 +812,31 @@ impl syn::parse::Parse for SnifInput {
         })
     }
 }
-fn lit_to_bool(lit: syn::Lit) -> Result<bool> {
-    match lit {
-        syn::Lit::Bool(lit) => Ok(lit.value()),
-        _ => bail!(lit.span() => "Expected boolean value"),
-    }
-}
-fn lit_to_string(lit: syn::Lit) -> Result<String> {
-    match lit {
-        syn::Lit::Str(lit) => Ok(lit.value()),
-        _ => bail!(lit.span() => "Expected string value"),
-    }
+// Parse boolean value from token tree
+fn parse_lit_bool(lit: TokenTree) -> Result<bool> {
+    let lit: syn::LitBool = syn::parse2(lit.into_token_stream())?;
+    Ok(lit.value())
 }
 
+fn parse_lit_str(lit: TokenTree) -> Result<String> {
+    let lit: syn::LitStr = syn::parse2(lit.into_token_stream())?;
+    Ok(lit.value())
+}
+
+fn parse_array_lit_str(group: TokenTree) -> Result<Vec<String>> {
+    let out = match group {
+        TokenTree::Group(group) => {
+            let parser = Punctuated::<syn::LitStr, Token![,]>::parse_terminated;
+            parser
+                .parse2(group.stream())?
+                .into_iter()
+                .map(|lit| lit.value())
+                .collect()
+        }
+        _ => bail!(group.span() => "Expected array literal"),
+    };
+    Ok(out)
+}
 // ToTokens
 impl ToTokens for ProxyMode {
     fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -843,6 +903,7 @@ impl Default for Config {
             split_cache: false,
             lazy: Lazieness::default(),
             profile: BuildProfile::default(),
+            extra_metadata: ExtraMetadata::default(),
         }
     }
 }
