@@ -1,6 +1,12 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+const CARGO_CONFIG_CASES: &[(&str, &str)] = &[
+    ("empty", "configs/empty.toml"),
+    ("build-dir", "configs/build-dir.toml"),
+    ("target-dir", "configs/target-dir.toml"),
+];
+
 const VISIBILITY_FIXTURES: &[&str] = &[
     "tests/module_visibility_pass.rs",
     "tests/module_visibility_fail.rs",
@@ -21,6 +27,14 @@ fn fixtures_root() -> PathBuf {
 
 fn example_readme_dir() -> PathBuf {
     repo_root().join("example_readme")
+}
+
+fn cargo_config_fixture_dir() -> PathBuf {
+    fixtures_root().join("tests/cargo-config")
+}
+
+fn cargo_config_manifest() -> PathBuf {
+    cargo_config_fixture_dir().join("Cargo.toml")
 }
 
 fn trybuild_pass_emul_dir() -> PathBuf {
@@ -100,6 +114,49 @@ fn run_cargo_in_fixture(
     command
         .output()
         .unwrap_or_else(|err| panic!("failed to spawn cargo in {}: {err}", fixture_dir.display()))
+}
+
+fn run_cargo_config_case(name: &str, config_rel: &str) -> Result<(), String> {
+    let config_path = fixtures_root().join(config_rel);
+    let manifest = cargo_config_manifest();
+    let fixture_dir = cargo_config_fixture_dir();
+
+    for path in [&config_path, &manifest] {
+        if !path.is_file() {
+            return Err(format!("fixture path not found: {}", path.display()));
+        }
+    }
+
+    let output = Command::new("cargo")
+        .arg("+stable")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("test")
+        .arg("--all-targets") // skip doctests
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .current_dir(&fixture_dir)
+        .args(["--", "--nocapture"])
+        .output()
+        .map_err(|err| format!("failed to spawn cargo for cargo-config `{name}`: {err}"))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(format!(
+        "cargo-config `{name}` failed (status={}):\n{stdout}{stderr}",
+        output.status
+    ))
+}
+
+#[test]
+fn cargo_config_fixtures_run_with_stable_toolchain() {
+    for (name, config_rel) in CARGO_CONFIG_CASES {
+        run_cargo_config_case(name, config_rel).unwrap_or_else(|err| panic!("{err}"));
+    }
 }
 
 #[test]
