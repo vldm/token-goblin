@@ -1,4 +1,5 @@
-#[allow(unused, reason = "struct used only in attr")]
+#![allow(unused, reason = "struct used only in attr tests")]
+
 #[derive(token_goblin::Snif)]
 struct Foo {
     x: i32,
@@ -37,7 +38,6 @@ fn allow_using_path() {
 }
 
 #[test]
-#[allow(unused, reason = "struct used only in attr")]
 fn snif_trait_and_mod() {
     #[token_goblin::derive_snif]
     trait Bar {}
@@ -52,11 +52,12 @@ fn snif_trait_and_mod() {
     assert_eq!(result, "@ token_goblin [] [{ mod x {} }]");
 }
 
+// allow attr on whole test to avoid passing it in `#[derive_snif]` inputs
+
 #[test]
 fn combine_multiple_snifs() {
     // even if snif is created with attribute macro, and another with derive - they should be compatible.
     #[token_goblin::derive_snif]
-    #[allow(unused, reason = "struct used only in attr")]
     struct Bar {
         x: f32,
     }

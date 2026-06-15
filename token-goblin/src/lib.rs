@@ -122,7 +122,7 @@ pub fn munch(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_derive(Snif, attributes(snif))]
 pub fn derive_snif_impl(input: TokenStream) -> TokenStream {
     timed!("derive_snif", {
-        macro_impl::snif_impl(input.into())
+        macro_impl::derive_snif_impl(input.into())
             .map_compile_error()
             .into()
     })
@@ -140,17 +140,11 @@ pub fn derive_snif_impl(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn derive_snif(_attr: TokenStream, input: TokenStream) -> TokenStream {
-    let input: proc_macro2::TokenStream = input.into();
-    let resulted_macro = timed!("derive_snif_attr", {
-        macro_impl::snif_impl(input.clone()).map_compile_error()
-    });
-    // Since attribute macro consumes tokens, return original input as well.
-    // Note: if macro returns `Err` - original input will persist as well.
-    quote::quote! {
-        #input
-        #resulted_macro
-    }
-    .into()
+    timed!("derive_snif_attr", {
+        macro_impl::derive_snif_attr_impl(input.into())
+            .map_compile_error()
+            .into()
+    })
 }
 
 /// Token goblin snif your item and vanish it.
@@ -183,14 +177,11 @@ pub fn derive_snif(_attr: TokenStream, input: TokenStream) -> TokenStream {
 ///
 #[proc_macro_attribute]
 pub fn vanish(_attr: TokenStream, input: TokenStream) -> TokenStream {
-    let input: proc_macro2::TokenStream = input.into();
-    let resulted_macro = timed!("vanish", {
-        macro_impl::snif_impl(input.clone()).map_compile_error()
-    });
-    quote::quote! {
-        #resulted_macro
-    }
-    .into()
+    timed!("vanish", {
+        macro_impl::derive_snif_impl(input.into())
+            .map_compile_error()
+            .into()
+    })
 }
 
 /// Ask token goblin to share knowledge about item in macro.
@@ -198,7 +189,7 @@ pub fn vanish(_attr: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn snif(input: TokenStream) -> TokenStream {
     timed!("snif", {
-        macro_impl::snif_expand_impl(input.into())
+        macro_impl::snif_impl(input.into())
             .map_compile_error()
             .into()
     })

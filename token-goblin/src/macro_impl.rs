@@ -196,7 +196,7 @@ pub fn spit_derive_impl(input: TokenStream) -> Result<TokenStream> {
 }
 /// Generate macro with same name
 #[allow(clippy::needless_pass_by_value, reason = "consistent api")]
-pub fn snif_impl(input: TokenStream) -> Result<TokenStream> {
+pub fn derive_snif_impl(input: TokenStream) -> Result<TokenStream> {
     // TODO: Give user a way to customize the macro name.
     // TODO: Rewrite to some simpler form, cause we only need a name and visibility of item.
     let any_item = syn::parse2::<syn::Item>(input.clone())?;
@@ -244,7 +244,20 @@ pub fn snif_impl(input: TokenStream) -> Result<TokenStream> {
     Ok(res)
 }
 
-pub fn snif_expand_impl(input: TokenStream) -> Result<TokenStream> {
+// attribute `#[derive_snif]` - that work like `#[derive(Snif)]` but allows any item.
+#[allow(clippy::needless_pass_by_value, reason = "consistent api")]
+pub fn derive_snif_attr_impl(input: TokenStream) -> Result<TokenStream> {
+    let resulted_macro = derive_snif_impl(input.clone())?;
+
+    // Since attribute macro consumes tokens, return original input as well.
+    // Note: if macro returns `Err` - original input will persist as well.
+    Ok(quote::quote! {
+        #input
+        #resulted_macro
+    })
+}
+
+pub fn snif_impl(input: TokenStream) -> Result<TokenStream> {
     debug!("snif expand input: {}", input);
     let SnifInput {
         chain,

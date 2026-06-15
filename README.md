@@ -430,6 +430,8 @@ cargo test -p token-goblin --test fixtures
 - only `proc-macro2::fallback` is used (no `proc-macro` api is available) in generated crates (which introduce some limitations)
 - mixed_site - is not supported by `proc_macro2::fallback`
 - we use `dev-dependencies` for `charms` dependencies, which cannot be optional (by design of cargo resolver), so one small macro may increase compile time by rebuilding all `dev-dependencies`.
+- `name` in `#[munch] fn name` should not be proc-macro generated, and is expected to have local source file.
+- on macos `dylibs` (newly generated chamrs) loading may took more time than compile itself (~300ms). This is [known issue](https://nnethercote.github.io/2025/09/04/faster-rust-builds-on-mac.html) related to XProtect. See the link above for workaround.
 
 ## Offline build
 

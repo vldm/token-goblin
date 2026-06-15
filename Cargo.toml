@@ -1,4 +1,4 @@
 [workspace]
-members = ["token-goblin", "runtime", "test-my-crate"]
-exclude = ["fixtures/*"]
+members = ["token-goblin", "runtime"]
+exclude = ["fixtures/*", "external-testbed"]
 resolver = "3"
