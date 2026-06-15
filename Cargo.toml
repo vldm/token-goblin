@@ -1,4 +1,8 @@
 [workspace]
 members = ["token-goblin", "runtime"]
-exclude = ["fixtures/*", "external-testbed"]
+exclude = ["fixtures/*", "example_readme"]
 resolver = "3"
+
+
+[workspace.dependencies]
+heck = { version = "0.4" }

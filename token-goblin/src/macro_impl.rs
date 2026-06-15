@@ -101,6 +101,9 @@ pub struct Config {
     /// Cargo build profile
     pub profile: BuildProfile,
 
+    /// If set to true, we do not emit ide helper module.
+    pub no_ide_helper: bool,
+
     /// Extra metadata to include in generated crate.
     ///
     /// Extend config with next options:
@@ -159,7 +162,7 @@ pub fn munch_impl(args: TokenStream, item_tts: TokenStream) -> Result<TokenStrea
             ProxyArgs::lazy(e.clone(), &args, &item_tts)
         });
 
-        let ide_helper_mod = ide_support::emit_ide_helper_mod(&context);
+        let ide_helper_mod = ide_support::emit_ide_helper_mod(&context, &config);
         let out = if let Some((vis, _)) = &context.mod_name {
             quote! {
                 #ide_helper_mod
@@ -569,7 +572,7 @@ impl BuildContext {
             // });
             TokenStream::from_str(&comments).unwrap()
         };
-        let ide_helper_mod = ide_support::emit_ide_helper_mod(&self.template_context);
+        let ide_helper_mod = ide_support::emit_ide_helper_mod(&self.template_context, &self.config);
         (ide_helper_mod, compile_info_docs)
     }
 }
@@ -709,11 +712,11 @@ impl syn::parse::Parse for Config {
         let mut config = Self::default();
         while !input.is_empty() {
             let key = input.parse::<syn::Ident>()?;
-            let value = if input.peek(syn::Token![=]) {
+            let value: Option<TokenTree> = if input.peek(syn::Token![=]) {
                 input.parse::<syn::Token![=]>()?;
-                input.parse::<TokenTree>()?
+                Some(input.parse::<TokenTree>()?)
             } else {
-                TokenTree::Ident(syn::Ident::new("true", key.span()))
+                None
             };
 
             match key.to_string().as_str() {
@@ -737,6 +740,9 @@ impl syn::parse::Parse for Config {
                 }
                 "skip_duplicate_dependencies" => {
                     config.extra_metadata.skip_duplicate = parse_lit_bool(value)?;
+                }
+                "no_ide_helper" => {
+                    config.no_ide_helper = parse_lit_bool(value)?;
                 }
                 "profile" => {
                     config.profile =
@@ -813,17 +819,26 @@ impl syn::parse::Parse for SnifInput {
     }
 }
 // Parse boolean value from token tree
-fn parse_lit_bool(lit: TokenTree) -> Result<bool> {
+fn parse_lit_bool(lit: Option<TokenTree>) -> Result<bool> {
+    let Some(lit) = lit else {
+        return Ok(true);
+    };
     let lit: syn::LitBool = syn::parse2(lit.into_token_stream())?;
     Ok(lit.value())
 }
 
-fn parse_lit_str(lit: TokenTree) -> Result<String> {
+fn parse_lit_str(lit: Option<TokenTree>) -> Result<String> {
+    let Some(lit) = lit else {
+        return Ok(String::new());
+    };
     let lit: syn::LitStr = syn::parse2(lit.into_token_stream())?;
     Ok(lit.value())
 }
 
-fn parse_array_lit_str(group: TokenTree) -> Result<Vec<String>> {
+fn parse_array_lit_str(group: Option<TokenTree>) -> Result<Vec<String>> {
+    let Some(group) = group else {
+        return Ok(Vec::new());
+    };
     let out = match group {
         TokenTree::Group(group) => {
             let parser = Punctuated::<syn::LitStr, Token![,]>::parse_terminated;
@@ -901,6 +916,7 @@ impl Default for Config {
         Self {
             incremental: true,
             split_cache: false,
+            no_ide_helper: false,
             lazy: Lazieness::default(),
             profile: BuildProfile::default(),
             extra_metadata: ExtraMetadata::default(),

@@ -46,7 +46,7 @@ fn trace_cycle(input: TokenStream) {
     }
 }
 
-#[token_goblin::munch]
+#[token_goblin::munch(dependencies = ["syn_derive"])]
 mod trace_syn {
     #[derive(syn_derive::Parse)]
     struct TraceStmt {

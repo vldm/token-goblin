@@ -75,8 +75,8 @@ fn format_ide_helper_mod(template_context: &TemplateContext) -> TokenStream {
     }
 }
 
-pub fn emit_ide_helper_mod(template_context: &TemplateContext) -> TokenStream {
-    if is_ide() {
+pub fn emit_ide_helper_mod(template_context: &TemplateContext, config: &Config) -> TokenStream {
+    if is_ide() && !config.no_ide_helper {
         format_ide_helper_mod(template_context)
     } else {
         TokenStream::new()

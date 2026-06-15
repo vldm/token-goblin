@@ -449,6 +449,8 @@ I recommend use `split_cache` for "big" charms only, that requires a lot of depe
 - we use `dev-dependencies` for `charms` dependencies, which cannot be optional (by design of cargo resolver), so one small macro may increase compile time by rebuilding all `dev-dependencies`.
 - `name` in `#[munch] fn name` should not be proc-macro generated, and is expected to have local source file.
 - on macos `dylibs` (newly generated chamrs) loading may took more time than compile itself (~300ms). This is [known issue](https://nnethercote.github.io/2025/09/04/faster-rust-builds-on-mac.html) related to XProtect. See the link above for workaround.
+- Rust-Analyzer will not analyze "optional" dependencies, and emit **"unresolved external crate"** errors on charms.
+To disable IDE support for charms, use `no_ide_helper` attribute `#[token_goblin::munch(dependencies = [..],no_ide_helper)]`
 
 ## Offline build
 

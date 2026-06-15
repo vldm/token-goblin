@@ -1,4 +1,4 @@
-#[token_goblin::munch]
+#[token_goblin::munch(dependencies = ["reqwest"])]
 mod brainfuck {
     use std::collections::VecDeque;
 

@@ -1,3 +1,5 @@
+pub use token_goblin::munch as super_mega_munch;
+
 #[token_goblin::munch]
 pub fn add(mut input: TokenStream) -> TokenStream {
     use std::str::FromStr;

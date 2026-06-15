@@ -1,7 +1,7 @@
 [workspace]
 
 [package]
-name = "external-testbed"
+name = "example_readme"
 version = "0.1.0"
 edition = "2024"
 
@@ -12,3 +12,8 @@ token-goblin = { path = "../token-goblin" }
 token-goblin-runtime = { path = "../runtime" }
 syn = { version = "2.0", features = ["full"] }
 quote = "1.0"
+
+[workspace.dependencies]
+reqwest = { version = "0.12", features = ["blocking"] }
+# for ttmuncher examples
+syn_derive = "0.2"
