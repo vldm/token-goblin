@@ -9,7 +9,7 @@ note: the macro import `secret` is defined here...
   |
   |     fn secret(input: TokenStream) -> TokenStream {
   |        ^^^^^^
-note: ...and refers to the macro `global_secret_740c63c3d05b6ade75d3a6d3d61f84b7b7dbdeffe8425833195cdad19e9f1776` which is defined here
+note: ...and refers to the macro `global_secret_ec7fdb4199bec43e9b1adef80eba03f7d908379ab09dfafc4a48bc572abb7610` which is defined here
  --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
   |
   |     #[token_goblin::munch]
@@ -27,7 +27,7 @@ note: the macro import `hidden` is defined here...
   |
   |     fn hidden(input: TokenStream) -> TokenStream {
   |        ^^^^^^
-note: ...and refers to the macro `global_hidden_d43d43bd0448b60fa542bea90285fd23e7b8a905e3e32a46cae3a42f1d6655cf` which is defined here
+note: ...and refers to the macro `global_hidden_e5a57955368dc8ba0d2fecdae2f54f24ec1ccabf1e9d6d0b9439af8929367673` which is defined here
  --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
   |
   |     #[token_goblin::munch]
@@ -45,7 +45,7 @@ note: the macro import `super_only` is defined here...
   |
   |             pub(super) fn super_only(input: TokenStream) -> TokenStream {
   |                           ^^^^^^^^^^
-note: ...and refers to the macro `global_super_only_ec1d02015187ef1db0dbcfb88e1fa7a3439df581562bf50ab9048ce111f7f84b` which is defined here
+note: ...and refers to the macro `global_super_only_d4aaa560a781a6bc85ae43746317bbb90b5b7a037dd5fd6dca54d27c5f8700c2` which is defined here
  --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
   |
   |             #[token_goblin::munch]
@@ -63,7 +63,7 @@ note: the macro import `bar` is defined here...
   |
   |     fn bar(input: TokenStream) -> TokenStream {
   |        ^^^
-note: ...and refers to the macro `global_bar_e217b59b1b3cd3e196637993929e3f553766bb5f2ce00cc2bccf85af823b5d47` which is defined here
+note: ...and refers to the macro `global_bar_0b30fe3cde168e30feb55639e5d5759c9c8712615337a83271217579a5fac10f` which is defined here
  --> $WORKSPACE/fixtures/tests/module_visibility_fail.rs
   |
   |     #[token_goblin::munch]

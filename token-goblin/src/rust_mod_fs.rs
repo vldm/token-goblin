@@ -2,7 +2,7 @@
 //! - module path like macro `std::module_path!`, but with ability to handle it.
 //! - file path to the current module file.
 //! - target root directory.
-//! 
+//!
 #![allow(unused)]
 use std::{
     collections::BTreeMap,
@@ -16,16 +16,14 @@ use crate::{Result, metadata, metadata::targets, path};
 pub struct SpanLocation {
     pub fs_workspace_root: PathBuf,
     pub fs_crate_manifest_dir: PathBuf,
-    /// Absolute directory where the active target resolves modules from.
-    pub fs_target_root: PathBuf,
-    /// Absolute path to the active target entrypoint file.
-    pub fs_target_root_file: PathBuf,
     /// Path from target root dir to the current module file.
     pub fs_module_path: PathBuf,
     /// File-derived module path relative to the active target root.
     pub target_module_path: syn::Path,
     /// Extra parts of module path from inline `mod {}` blocks in the current file.
     pub module_path_postfix: syn::Path,
+
+    pub target_root: targets::TargetRoot,
 }
 impl SpanLocation {
     /// Construct `SpanLocation` info from proc-macro span.
@@ -62,28 +60,28 @@ impl SpanLocation {
         )?;
 
         let discovered = targets::TargetRoot::discover(&manifest_path, &fs_crate_manifest_dir)?;
-        let target = targets::TargetRoot::select_for_file(&discovered, &module_file)?;
-        let fs_target_root = target.module_dir.clone();
-        let fs_target_root_file = target.root_file.clone();
+        let target = targets::TargetRoot::select_for_file(&discovered, &module_file)?.clone();
+
         debug!(
-            "active target: {:?} root={} target_root={}",
+            "active target: {:?} crate_name={} root={} target_root={}",
             target.kind,
-            fs_target_root_file.display(),
-            fs_target_root.display()
+            target.crate_name,
+            target.root_file.display(),
+            target.module_dir.display()
         );
 
-        let fs_module_path = if module_file == fs_target_root_file {
+        let fs_module_path = if module_file == target.root_file {
             PathBuf::new()
         } else {
             module_file
-                .strip_prefix(&fs_target_root)
+                .strip_prefix(&target.module_dir)
                 .map(targets::normalize_path)
                 .map_err(|_| {
                     error!(
                         Span::call_site() =>
                         "SpanLocation: `{}` is not under target root `{}`",
                         module_file.display(),
-                        fs_target_root.display()
+                        target.module_dir.display()
                     )
                 })?
         };
@@ -98,11 +96,10 @@ impl SpanLocation {
         Ok(Self {
             fs_workspace_root,
             fs_crate_manifest_dir,
-            fs_target_root,
-            fs_target_root_file,
             fs_module_path,
             target_module_path,
             module_path_postfix,
+            target_root: target,
         })
     }
 
@@ -124,12 +121,16 @@ impl SpanLocation {
         join_paths(&self.target_module_path, &self.module_path_postfix)
     }
 
+    pub fn crate_name(&self) -> String {
+        self.target_root.crate_name.clone()
+    }
+
     /// Absolute path to the current module file.
     pub fn file_path(&self) -> PathBuf {
         if self.fs_module_path.as_os_str().is_empty() {
-            self.fs_target_root_file.clone()
+            self.target_root.root_file.clone()
         } else {
-            self.fs_target_root.join(&self.fs_module_path)
+            self.target_root.module_dir.join(&self.fs_module_path)
         }
     }
 

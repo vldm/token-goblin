@@ -928,9 +928,18 @@ impl Default for Config {
 // (when used pub crate, and require #[macro_export] to be visible).
 fn postfix_hash(span: Span) -> String {
     let span = span.unwrap();
+
+    let span_location = SpanLocation::recover(span).unwrap();
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"postfix");
-    hasher.update(span.file().as_bytes());
+    hasher.update(span_location.crate_name().as_bytes());
+    hasher.update(
+        span_location
+            .module_path()
+            .to_token_stream()
+            .to_string()
+            .as_bytes(),
+    );
     hasher.update(&span.line().to_le_bytes());
     hasher.update(&span.column().to_le_bytes());
     hasher.finalize().to_hex().to_string()
