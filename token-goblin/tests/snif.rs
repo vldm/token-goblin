@@ -6,7 +6,7 @@ struct Foo {
 }
 
 mod foo {
-    pub use stringify;
+    pub use core::stringify;
 }
 #[test]
 fn stringify_snif() {
