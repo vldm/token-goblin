@@ -924,22 +924,26 @@ impl Default for Config {
     }
 }
 
-// Location hash to prevent collisions in macro names
-// (when used pub crate, and require #[macro_export] to be visible).
+/// Location hash to prevent collisions in macro names
+/// (when used `pub macro`, which requires `#[macro_export]` to be set, and enforce macro to be declared in global scope).
 fn postfix_hash(span: Span) -> String {
     let span = span.unwrap();
 
-    let span_location = SpanLocation::recover(span).unwrap();
+    let (crate_name, module_path) = {
+        match SpanLocation::recover(span) {
+            // as fallback we use old technique.
+            // In case file was generated (ide expansion technique).
+            Err(_) => (String::new(), span.file()),
+            Ok(span_location) => (
+                span_location.crate_name(),
+                span_location.module_path().to_token_stream().to_string(),
+            ),
+        }
+    };
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"postfix");
-    hasher.update(span_location.crate_name().as_bytes());
-    hasher.update(
-        span_location
-            .module_path()
-            .to_token_stream()
-            .to_string()
-            .as_bytes(),
-    );
+    hasher.update(crate_name.as_bytes());
+    hasher.update(module_path.as_bytes());
     hasher.update(&span.line().to_le_bytes());
     hasher.update(&span.column().to_le_bytes());
     hasher.finalize().to_hex().to_string()
