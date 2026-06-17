@@ -3,6 +3,12 @@ name = "token-goblin"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.89"
+description = "Inline procedural macros without a separate proc-macro crate."
+license.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 # Used features: span.file() -> 1.88, try_lock() -> 1.89
 
 [lib]

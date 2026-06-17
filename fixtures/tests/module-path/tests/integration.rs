@@ -13,4 +13,5 @@ mod nested {
 #[test]
 fn integration_smoke() {
     test_root!();
+    module_path_fixture::lib_root!();
 }

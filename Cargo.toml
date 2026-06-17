@@ -3,6 +3,12 @@ members = ["token-goblin", "runtime"]
 exclude = ["fixtures/*", "example_readme"]
 resolver = "3"
 
+[workspace.package]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/vldm/token-goblin"
+readme = "README.md"
+keywords = ["proc-macro", "macro", "reflection", "comptime"]
+categories = ["development-tools::procedural-macro-helpers"]
 
 [workspace.dependencies]
 heck = { version = "0.4" }
