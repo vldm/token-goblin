@@ -5,7 +5,6 @@
 //! This example convert a struct with named fields into a struct of arrays.
 //! And implements push and pop methods for it.
 
-
 // The macro `multi_array_vec` converts a struct with named fields into a struct of arrays.
 // ```
 // struct SoaFoo {
@@ -25,10 +24,8 @@ pub struct Foo {
     health: u16,
 }
 
-
-#[token_goblin::munch]
+#[token_goblin::munch(lazy)]
 mod soa {
-    use syn::braced;
 
     struct SoaInput {
         name: syn::Ident,
@@ -36,14 +33,19 @@ mod soa {
         item: syn::ItemStruct,
     }
 
-    impl syn::parse::Parse for SoaInput {
-        // The argument for macro is in form of `name {itemdefinition..}`
-        fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-            let name = input.parse()?;
-            let content;
-            let _brace_token = braced!(content in input);
-            let item = content.parse()?;
-            Ok(SoaInput { name, item })
+    impl TryFrom<SnifedItems> for SoaInput {
+        type Error = syn::Error;
+        fn try_from(value: SnifedItems) -> Result<Self, syn::Error> {
+            let name = syn::parse2(value.input.clone())?;
+            match value.items.first().cloned() {
+                Some(si) => {
+                    let syn::Item::Struct(item) = si.item else {
+                        return Err(syn::Error::new(si.span(), "Expected struct"));
+                    };
+                    Ok(SoaInput { name, item })
+                }
+                None => Err(syn::Error::new(value.span(), "Expected struct")),
+            }
         }
     }
     /// 1. Parse structure definition and name for new structure.
@@ -56,8 +58,8 @@ mod soa {
     ///     health: Vec<u16>,
     /// }
     /// ```
-    pub fn multi_array_vec(input: TokenStream) -> TokenStream {
-        let SoaInput { name, item } = syn::parse2(input).expect("Failed to parse input");
+    pub fn multi_array_vec(input: SnifedItems) -> TokenStream {
+        let SoaInput { name, item } = input.try_into().expect("Failed to parse input");
 
         let syn::Fields::Named(named_fields) = item.fields else {
             panic!("Expected struct with named fields");
@@ -102,8 +104,8 @@ mod soa {
     // e.g. by extracting some of impl methods into separate macros.
 
     /// Implement push for original structure, and pop into original structure.
-    pub fn push_pop_impl(input: TokenStream) -> TokenStream {
-        let SoaInput { name, item } = syn::parse2(input).expect("Failed to parse input");
+    pub fn push_pop_impl(input: SnifedItems) -> TokenStream {
+        let SoaInput { name, item } = input.try_into().expect("Failed to parse input");
 
         let syn::Fields::Named(named_fields) = item.fields else {
             panic!("Expected struct with named fields");

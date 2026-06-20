@@ -253,26 +253,18 @@ pub fn derive_snif_impl(input: TokenStream) -> Result<TokenStream> {
 
     let macro_name = format_ident!("{}_{}", name, postfix_hash(name.span()));
 
-    let token_goblin_marker = token_goblin_marker();
+    let snif_macro_branch = crate::snif::derive_snif_macro_branch(&input);
     let res = quote! {
         #macro_glob
         #[doc(hidden)]
         #[allow(unused)]
         macro_rules! #macro_name {
-            (#token_goblin_marker [($($next:tt)+) $(=> $rest:tt)*] [$($other:tt)*]) => {
-                $($next)+! {#token_goblin_marker
-                    [$($rest) =>*]
-                    [
-                        $($other)*
-                        {#input}
-                    ]
-                }
-            };
+            #snif_macro_branch
             // empty input, just return input tokens.
             () => {
                 #input
             };
-            ($($any:tt)*) => {core::compile_error!{concat!("This macro should be used only from token-goblin::snif got: ", stringify!($($any)*))}};
+            ($($any:tt)*) => {core::compile_error!{concat!("This macro should be used only from token-goblin::snif got unexpected input: ", stringify!($($any)*))}};
         }
 
         #visibility use #macro_name as #name;
@@ -306,8 +298,7 @@ pub fn snif_impl(input: TokenStream) -> Result<TokenStream> {
         .iter() // all macros in users chain
         .map(ToTokens::to_token_stream)
         // the end macro itself
-        // repeat it once more, to allow macro_call itself with normalized arguments
-        .chain(iter::repeat_n(macro_path.to_token_stream(), 2))
+        .chain(iter::once(macro_path.to_token_stream()))
         .collect::<Vec<_>>();
 
     let (first, rest) = chain_of_macros
@@ -316,15 +307,7 @@ pub fn snif_impl(input: TokenStream) -> Result<TokenStream> {
 
     let macro_args = macro_args.stream();
 
-    let token_goblin_marker = token_goblin_marker();
-    let x = quote! {
-        #first!
-         {
-            #token_goblin_marker
-            [#( (#rest) ) => *] // the list of macros to chain
-            [#macro_args ] // collected arguments
-        }
-    };
+    let x = crate::snif::snif_call(first, rest, &macro_args);
 
     debug!("snif expanded: {}", x);
     Ok(x)
@@ -601,19 +584,7 @@ fn expand_entries(
             quote! {}
         };
 
-        let token_goblin_marker = token_goblin_marker();
-        let snif_branch = quote! {
-            // The task of this branch is to normalize the input
-            // (@token_goblin [($($next:tt)+) $(=> $rest:tt)*] [$($other:tt)*]) => {
-            (#token_goblin_marker [($($me:tt)*)] // the list of macros to chain
-            [$($macro_args:tt)*] ) => {
-                $($me)*! {$($macro_args)*}
-            }; // collected arguments
-            (#token_goblin_marker [$($more:tt)*] $($any:tt)*) => {
-                core::compile_error!{
-                    concat!("Unexpected input in token-goblin::snif", "got extra chains: ", stringify!($($more:tt)*))}
-            };
-        };
+        let snif_branch = crate::snif::munch_macro_branches();
 
         let name = &entry.sig.ident;
         let postfix = postfix_hash(name.span());
@@ -957,15 +928,4 @@ fn get_env_vars() -> String {
         .map(|(key, value)| format!("{key}={value}"))
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-/// Special tokenstream that cannot be handwritten used to detect if input is from internall macro.
-/// Currently used for snif impl.
-fn token_goblin_marker() -> TokenStream {
-    // macro by example will ignore spacing marker.
-    let punct = proc_macro2::Punct::new('~', proc_macro2::Spacing::Joint);
-    let punct2 = proc_macro2::Punct::new('@', proc_macro2::Spacing::Alone);
-    quote! {
-        #punct #punct2 token_goblin
-    }
 }

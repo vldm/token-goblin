@@ -47,8 +47,41 @@
 use core::fmt::{self, Display};
 use std::{cell::RefCell, fmt::Debug, str::FromStr};
 
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
+use quote::ToTokens;
 use syn::parse::{Parse, ParseStream, Parser};
+
+#[derive(Clone)]
+pub struct SnifedItem {
+    pub path: syn::Path,
+    arrow: syn::Token![=>],
+    brace: syn::token::Brace,
+    pub item: syn::Item,
+}
+#[derive(Clone)]
+pub struct SnifedItems {
+    first_group: syn::token::Bracket,
+    pub items: Vec<SnifedItem>,
+    second_group: syn::token::Bracket,
+    pub input: TokenStream,
+}
+impl SnifedItems {
+    #[must_use]
+    pub fn span(&self) -> proc_macro2::Span {
+        self.items
+            .first()
+            .map_or_else(Span::call_site, SnifedItem::span)
+    }
+}
+impl SnifedItem {
+    #[must_use]
+    pub fn span(&self) -> proc_macro2::Span {
+        self.path
+            .segments
+            .first()
+            .map_or_else(Span::call_site, |segment| segment.ident.span())
+    }
+}
 /// Represents a comma separated list of parsable values.
 ///
 /// Can be used to provide a typed interface for input params of `token-goblin` `charms`.
@@ -257,6 +290,67 @@ impl<T: Parse> Parse for CommaSeparated<T> {
         let parser = syn::punctuated::Punctuated::<T, syn::Token![,]>::parse_terminated;
         let components = parser(input)?;
         Ok(CommaSeparated(components.into_iter().collect()))
+    }
+}
+
+impl syn::parse::Parse for SnifedItem {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        // Skip ident + `::`, find `=>` in tokenstream. then feed bounded stream into `syn::Path::parse`
+
+        let path = syn::Path::parse_mod_style(input)?;
+
+        let arrow = input.parse()?;
+
+        let content;
+        let brace = syn::braced!(content in input);
+        let item = content.parse()?;
+
+        Ok(SnifedItem {
+            path,
+            arrow,
+            brace,
+            item,
+        })
+    }
+}
+impl syn::parse::Parse for SnifedItems {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let items_input;
+        let first_group = syn::bracketed!(items_input in input);
+        let mut items = Vec::new();
+        while !items_input.is_empty() {
+            items.push(SnifedItem::parse(&items_input)?);
+        }
+        let macro_input;
+        let second_group = syn::bracketed!(macro_input in input);
+
+        Ok(SnifedItems {
+            first_group,
+            items,
+            second_group,
+            input: macro_input.parse()?,
+        })
+    }
+}
+impl ToTokens for SnifedItem {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.path.to_tokens(tokens);
+        self.arrow.to_tokens(tokens);
+        self.brace.surround(tokens, |tokens| {
+            self.item.to_tokens(tokens);
+        });
+    }
+}
+impl ToTokens for SnifedItems {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.first_group.surround(tokens, |tokens| {
+            for item in &self.items {
+                item.to_tokens(tokens);
+            }
+        });
+        self.second_group.surround(tokens, |tokens| {
+            self.input.to_tokens(tokens);
+        });
     }
 }
 #[cfg(test)]

@@ -27,7 +27,7 @@ fn stringify_snif() {
     // But there will be internal input.
     assert_eq!(
         result,
-        "~ @ token_goblin [(stringify)] [{ struct Foo { x : i32, } }]"
+        "~ @ token_goblin [] [(stringify)] [Foo => { struct Foo { x : i32, } }] []"
     );
 }
 
@@ -38,22 +38,25 @@ fn test_snif_macro() {
 
     let x = token_goblin::snif!(Foo in stringify_our!());
 
-    assert_eq!(x, "{ struct Foo { x : i32 , } }");
+    assert_eq!(x, "[Foo => { struct Foo { x : i32 , } }] []");
 }
 
 #[test]
 fn stringify_snif_extra_args() {
     // extra arguments is passed before structs.
     // They should be known for macro implementation and finit.
-    let result = snif!(Foo in stringify_our!(before struct) );
+    let result = snif!(Foo in stringify_our!(after struct) );
 
-    assert_eq!(result, "before struct { struct Foo { x : i32 , } }");
+    assert_eq!(
+        result,
+        "[Foo => { struct Foo { x : i32 , } }] [after struct]"
+    );
 }
 
 #[test]
 fn allow_using_path() {
     let result = snif!(Foo in foo::stringify!());
-    assert_eq!(result, "{ struct Foo { x : i32 , } }");
+    assert_eq!(result, "[Foo => { struct Foo { x : i32 , } }] []");
 }
 
 #[test]
@@ -65,10 +68,10 @@ fn snif_trait_and_mod() {
     mod x {}
 
     let result = snif!(Bar in stringify_our!());
-    assert_eq!(result, "{ trait Bar { } }");
+    assert_eq!(result, "[Bar => { trait Bar { } }] []");
 
     let result = snif!(x in stringify_our!());
-    assert_eq!(result, "{ mod x { } }");
+    assert_eq!(result, "[x => { mod x { } }] []");
 }
 
 // allow attr on whole test to avoid passing it in `#[derive_snif]` inputs
@@ -84,13 +87,13 @@ fn combine_multiple_snifs() {
 
     assert_eq!(
         result,
-        "{ struct Bar { x : f32 , } } { struct Foo { x : i32 , } }"
+        "[Bar => { struct Bar { x : f32 , } } Foo => { struct Foo { x : i32 , } }] []"
     );
     // or in reverse order
     let result2 = snif!(Foo, Bar in stringify_our!());
     assert_eq!(
         result2,
-        "{ struct Foo { x : i32 , } } { struct Bar { x : f32 , } }"
+        "[Foo => { struct Foo { x : i32 , } } Bar => { struct Bar { x : f32 , } }] []"
     );
 }
 
@@ -110,4 +113,39 @@ fn test_vanish_macro() {
         assert_eq!(y.x, 42);
     }
     foo();
+}
+
+#[test]
+fn munch_use_snifed_items() {
+    #[derive(token_goblin::Snif)]
+    struct Bar {
+        x: i32,
+        y: u32,
+    }
+
+    #[token_goblin::munch(lazy)]
+    fn stringify_fields(input: SnifedItems) -> TokenStream {
+        let result = input
+            .items
+            .iter()
+            .filter_map(|item| match &item.item {
+                syn::Item::Struct(struct_item) => Some(struct_item),
+                _ => None,
+            })
+            .flat_map(|f| f.fields.iter())
+            .map(|f| f.ident.to_token_stream().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        quote! {
+            #result
+        }
+    }
+
+    let result = snif!(Foo in stringify_fields!());
+    assert_eq!(result, "x");
+
+    let result = snif!(Bar in stringify_fields!());
+    assert_eq!(result, "x, y");
+    let result = snif!(Bar, Foo in stringify_fields!());
 }

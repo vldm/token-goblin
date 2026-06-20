@@ -14,6 +14,7 @@ mod metadata;
 mod path;
 mod rust_mod_fs;
 mod rustc_meta;
+mod snif;
 mod span_recovery;
 mod syn_items;
 mod template;
@@ -22,18 +23,18 @@ use errors::MapCompileError;
 
 /// Set to 'true' to enable debug prints.
 #[allow(unexpected_cfgs, reason = "custom made config")]
-pub(crate) const DEBUG: bool = cfg!(token_goblin_debug);
+pub(crate) const DEBUG: bool = cfg!(token_goblin_debug) || path::env_print_level(1);
 
 /// Set to 'true' to enable printing of timings.
 /// (Also requires `DEBUG` to be enabled, see above)
 #[allow(unexpected_cfgs, reason = "custom made config")]
-pub(crate) const PRINT_TIMINGS: bool = cfg!(token_goblin_print_timings);
+pub(crate) const PRINT_TIMINGS: bool = cfg!(token_goblin_print_timings) || path::env_print_level(2);
 
 /// Set to 'true' to enable debug prints of environment variables.
 /// (Also requires `DEBUG` to be enabled)
 ///
 /// Internal only feature, not exposed to the user.
-pub(crate) const DEBUG_ENV: bool = false;
+pub(crate) const DEBUG_ENV: bool = false || path::env_print_level(3);
 
 /// Internal feature that prevent cache checking for dylib.
 pub(crate) const NO_CACHE: bool = false;

@@ -146,3 +146,22 @@ impl Drop for FsLockGuard {
         self.unlock().unwrap();
     }
 }
+
+/// Simple parse of environment variable `TOKEN_GOBLIN_PRINT_LEVEL`.
+/// parses only first character, expect digit, if more than one character return true for any level.
+pub const fn env_print_level(level: u8) -> bool {
+    let Some(value) = option_env!("TOKEN_GOBLIN_PRINT_LEVEL") else {
+        return false;
+    };
+    if value.len() > 1 {
+        return true;
+    }
+    let Some(ascii_char) = value.as_bytes().first().copied() else {
+        return false;
+    };
+    if ascii_char < b'0' || ascii_char > b'9' {
+        return false;
+    }
+
+    ascii_char - b'0' >= level
+}

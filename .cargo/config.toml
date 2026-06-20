@@ -6,3 +6,5 @@ rustflags = [
     "--cfg",
     "token_goblin_debug",
 ]
+[patch.crates-io]
+token-goblin-runtime = { path = "./runtime" }
