@@ -25,13 +25,14 @@ fn foo(input: TokenStream) -> TokenStream {
 ```
 
 This generates a new macro, or **charm**, named foo!:
+
 ```rust
 foo!(bar baz); // will expand to `bar baz`
 ```
 
 In other words, `#[munch]` turns the function into a new macro.
 
-Note: beacause token-goblin are macros that generate macros, **charm** is used in docs for clarity (and a little bit of lore).
+Note: beacause `token-goblin::munch` are macros that generate macros, **charm** term would be used for generated macros in docs for clarity (and a little bit of lore).
 
 # Usecases
 
@@ -41,6 +42,7 @@ Some users don't want to mess with `proc-macro` API, they found it foreign and c
 `crabtime` showed another way to write macro - a simple string based API, that allows to use `String` and `Vec<String>` dirrectly as input of macro.
 
 Example adopted from `crabtime` docs:
+
 ```rust
 #[token_goblin::munch]
 fn generate_enums(components: CommaSeparated<Token>) {
@@ -60,15 +62,15 @@ generate_enums!["X", "Y", "Z", "W", "V", "U", "T", "S", "R", "Q"];
 ```
 
 which will expand to:
+
 ```rust
 enum Enum1 { X }
 // ... up to
 enum Enum10 { X, Y, Z, W, V, U, T, S, R, Q }
 ```
 
-Note: while it is inspired by `crabtime`, and `token-goblin` adopted this approach, instead of hardcoding `String`, `Vec<String>` type handling, input is expected to implement `syn::parse::Parse` trait.
+Note: while it is inspired by `crabtime`, and `token-goblin` adopted this approach, instead of hardcoding `String`, `Vec<String>` type handling, **input is expected to implement `syn::parse::Parse` trait**.
 So `CommaSeparated<Token>` is just two wrappers in `token-goblin-runtime` crate, that provides required `syn::parse::Parse` implementation.
-
 
 ## Inline proc-macro
 
@@ -84,7 +86,9 @@ fn foo(input: TokenStream) -> TokenStream {
     // ..
 }
 ```
+
 And even better, it's support `syn` based types as input params:
+
 ```rust
 #[token_goblin::munch]
 fn stringify(input: syn::Ident) -> TokenStream {
@@ -95,6 +99,7 @@ fn stringify(input: syn::Ident) -> TokenStream {
 }
 ```
 
+Or, you can define multiple `charms` in one module, and extend input param
 
 <details>
   <summary>Or, you can define multiple `charms` in one module, and extend input param</summary>
@@ -161,7 +166,8 @@ fn main() {
 But you are not limited to simple expressions, in fact you can do any compile-time execution, like
 evaluating bytecodes, or even downloading something from the internet (using external states in macro is not recommended though).
 
-e.g. from [examples/brainfuck.rs](token-goblin/examples/brainfuck.rs)
+e.g. from [example_readme/examples/brainfuck.rs](example_readme/examples/brainfuck.rs)
+
 ```rust
 #[token_goblin::munch]
 mod brainfuck {
@@ -335,13 +341,14 @@ But working with TokenStream introduce some boilerplate, and some macros should 
     ```
 
     It still requires defining `TraceInput` and `TraceStmt` structs, and `syn::parse::Parse` implementation for them.
-    See [examples/ttmunch-replace.rs](token-goblin/examples/ttmunch-replace.rs) for more details.
+    See [example_readme/examples/ttmunch-replace.rs](example_readme/examples/ttmunch-replace.rs) for more details.
 
 </details>
 
 With `token-goblin` you don't need to chose, since it allows you to combine both approaches.
 
 e.g. writing declarative macro as facade that will check patterns, and compute results in `proc-macro` API.
+
 ```rust
 #[token_goblin::munch]
 pub fn stringify_any(input: TokenStream) -> TokenStream {
@@ -365,11 +372,12 @@ fn main() {
     println!("result: {result}");
 }
 ```
+
 Uncommenting non ident expansions will fail at compile time:
 ![fails](assets/decl-proc-fail.png)
 
 There still old but good crate `proc-macro-rules` that allows you to use declarative macros patterns directly in proc-macro API.
- 
+
 # Questions
 
 ## Why it's named Token Goblin?
@@ -397,22 +405,24 @@ I have tried to contribute to `crabtime` https://github.com/wdanilo/crabtime/iss
 But looks like author is not interested in maintaining it anymore. There still issues related to build-cache.
 
 `token-goblin` combines all the features from both `crabtime` and `inline-proc`, like:
+
 - using dylib to load proc-macro definition
 - support for workspace dependencies
 - support for attributes and derive macros helpers
 - mod and fn entrypoints
 
  and adds some extra:
+
 - Emit ide helper for Rust-Analyzer completion [ide-helper](token-goblin/src/ide_support.rs)
 - Allow span information to be preserved in output [span_recovery](token-goblin/src/span_recovery.rs)
 - Convert any panic to compile error [panic](runtime/src/wire.rs#L185)
 - Extendable interface for input and output [ux](runtime/src/ux.rs)
 
 And planned more:
+
 - Mapping panics/compile errors to `compile_error!` should show any error in right source location.
 - Support for `wasm` as feature that will enforce sandboxing of `charms`.
 - "reflection" like macro, to store tokens of some items, and use them as input to another macro.
-
 
 ## Testing
 
@@ -420,6 +430,7 @@ Most of tests are implemented as regular integration tests, or doctests dirrectl
 Fixtures represents tests that need to be run with different environment (currently only toolchain, or cargo config).
 
 Fixtures can be run with:
+
 ```bash
 cargo test -p token-goblin --test fixtures
 ```
@@ -432,6 +443,7 @@ By default all charms generated by `token-goblin::munch` will share same build-c
 Sharing cache, enforce cargo to lock directory, and therefore one "slow" charm can slow down all compilition process.
 
 To avoid this, you can set `split_cache` to `true` in `#[token_goblin::munch]` attributes.
+
 ```rust
 #[token_goblin::munch(split_cache)] // or #[token_goblin::munch(split_cache = true)]
 fn foo(input: TokenStream) -> TokenStream {
@@ -444,6 +456,7 @@ This will generate force charm to use separate build-cache directory, and theref
 I recommend use `split_cache` for "big" charms only, that requires a lot of dependencies, or takes a lot of time to build.
 
 # Ceveats:
+
 - only `proc-macro2::fallback` is used (no `proc-macro` api is available) in generated crates (which introduce some limitations)
 - mixed_site - is not supported by `proc_macro2::fallback`
 - we use `dev-dependencies` for `charms` dependencies, which cannot be optional (by design of cargo resolver), so one small macro may increase compile time by rebuilding all `dev-dependencies`.
