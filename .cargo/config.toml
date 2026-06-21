@@ -4,7 +4,12 @@
 token-goblin-runtime = { path = "./runtime" }
 
 [env]
-TOKEN_GOBLIN_PRINT_LEVEL = "3"
+# Set to 1-4 to increase debug print levels.
+# 1 - print basic info
+# 2 - print timings
+# 3 - print input and output of internal macros
+# 4 - print environment variables
+TOKEN_GOBLIN_PRINT_LEVEL = "0"
 
 [build]
 # Because we use multiple test workspaces (see fixtures, and example_readme),

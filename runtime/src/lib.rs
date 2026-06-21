@@ -11,10 +11,10 @@ pub mod prelude {
     pub use std::str::FromStr;
     pub use syn;
 
-    pub use crate::ux::{CommaSeparated, SnifedItems, SniffedEntry, Token};
+    pub use crate::ux::{CommaSeparated, SnifedEntries, SnifedEntry, Token};
     // aliases for those who don't want "goblin" styled names.
     #[doc(hidden)]
-    pub use crate::ux::{SnifedItems as SniffedItems, SniffedEntry as SniffedItem};
+    pub use crate::ux::{SnifedEntries as SniffedEntries, SnifedEntry as SniffedEntry};
     pub use crate::{output, output_str};
 }
 pub use ux::{IntoTokenStream, TokenStreamInto};

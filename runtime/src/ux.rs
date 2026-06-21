@@ -66,7 +66,7 @@ use syn::parse::{Parse, ParseStream, Parser};
 /// ```
 ///
 #[derive(Clone)]
-pub struct SniffedEntry {
+pub struct SnifedEntry {
     /// Path to macro that was used to generate this entry.
     pub snif_path: syn::Path,
     arrow: syn::Token![=>],
@@ -88,21 +88,21 @@ pub struct SniffedEntry {
 /// ```
 ///
 #[derive(Clone)]
-pub struct SnifedItems {
+pub struct SnifedEntries {
     first_group: syn::token::Bracket,
-    pub entries: Vec<SniffedEntry>,
+    pub entries: Vec<SnifedEntry>,
     second_group: syn::token::Bracket,
     pub macro_input: TokenStream,
 }
-impl SnifedItems {
+impl SnifedEntries {
     #[must_use]
     pub fn span(&self) -> proc_macro2::Span {
         self.entries
             .first()
-            .map_or_else(Span::call_site, SniffedEntry::span)
+            .map_or_else(Span::call_site, SnifedEntry::span)
     }
 }
-impl SniffedEntry {
+impl SnifedEntry {
     #[must_use]
     pub fn span(&self) -> proc_macro2::Span {
         self.snif_path
@@ -322,7 +322,7 @@ impl<T: Parse> Parse for CommaSeparated<T> {
     }
 }
 
-impl syn::parse::Parse for SniffedEntry {
+impl syn::parse::Parse for SnifedEntry {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         // Skip ident + `::`, find `=>` in tokenstream. then feed bounded stream into `syn::Path::parse`
 
@@ -334,7 +334,7 @@ impl syn::parse::Parse for SniffedEntry {
         let brace = syn::braced!(content in input);
         let item = content.parse()?;
 
-        Ok(SniffedEntry {
+        Ok(SnifedEntry {
             snif_path: path,
             arrow,
             brace,
@@ -342,18 +342,18 @@ impl syn::parse::Parse for SniffedEntry {
         })
     }
 }
-impl syn::parse::Parse for SnifedItems {
+impl syn::parse::Parse for SnifedEntries {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         let items_input;
         let first_group = syn::bracketed!(items_input in input);
         let mut items = Vec::new();
         while !items_input.is_empty() {
-            items.push(SniffedEntry::parse(&items_input)?);
+            items.push(SnifedEntry::parse(&items_input)?);
         }
         let macro_input;
         let second_group = syn::bracketed!(macro_input in input);
 
-        Ok(SnifedItems {
+        Ok(SnifedEntries {
             first_group,
             entries: items,
             second_group,
@@ -361,7 +361,7 @@ impl syn::parse::Parse for SnifedItems {
         })
     }
 }
-impl ToTokens for SniffedEntry {
+impl ToTokens for SnifedEntry {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         self.snif_path.to_tokens(tokens);
         self.arrow.to_tokens(tokens);
@@ -370,7 +370,7 @@ impl ToTokens for SniffedEntry {
         });
     }
 }
-impl ToTokens for SnifedItems {
+impl ToTokens for SnifedEntries {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         self.first_group.surround(tokens, |tokens| {
             for item in &self.entries {

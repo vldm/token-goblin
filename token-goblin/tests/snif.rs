@@ -124,7 +124,7 @@ fn munch_use_snifed_items() {
     }
 
     #[token_goblin::munch(lazy)]
-    fn stringify_fields(input: SnifedItems) -> TokenStream {
+    fn stringify_fields(input: SnifedEntries) -> TokenStream {
         let result = input
             .entries
             .iter()

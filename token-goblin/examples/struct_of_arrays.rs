@@ -33,9 +33,9 @@ mod soa {
         item: syn::ItemStruct,
     }
 
-    impl TryFrom<SnifedItems> for SoaInput {
+    impl TryFrom<SnifedEntries> for SoaInput {
         type Error = syn::Error;
-        fn try_from(value: SnifedItems) -> Result<Self, syn::Error> {
+        fn try_from(value: SnifedEntries) -> Result<Self, syn::Error> {
             let name = syn::parse2(value.macro_input.clone())?;
             match value.entries.first().cloned() {
                 Some(si) => {
@@ -58,7 +58,7 @@ mod soa {
     ///     health: Vec<u16>,
     /// }
     /// ```
-    pub fn multi_array_vec(input: SnifedItems) -> TokenStream {
+    pub fn multi_array_vec(input: SnifedEntries) -> TokenStream {
         let SoaInput { name, item } = input.try_into().expect("Failed to parse input");
 
         let syn::Fields::Named(named_fields) = item.fields else {
@@ -104,7 +104,7 @@ mod soa {
     // e.g. by extracting some of impl methods into separate macros.
 
     /// Implement push for original structure, and pop into original structure.
-    pub fn push_pop_impl(input: SnifedItems) -> TokenStream {
+    pub fn push_pop_impl(input: SnifedEntries) -> TokenStream {
         let SoaInput { name, item } = input.try_into().expect("Failed to parse input");
 
         let syn::Fields::Named(named_fields) = item.fields else {
