@@ -1,4 +1,89 @@
 // #![allow(unused)]
+//! `token-goblin` keeps a small goblin that munches your tokens and forges them
+//! back into macros (here called `charms`). You feed it declarations, it chews,
+//! and spits out something useful. Mostly.
+//!
+//! ## Forge your charm:
+//! ```
+//! # use token_goblin::munch;
+//! #[munch]
+//! fn my_charm(input: TokenStream) -> TokenStream {
+//!   // ..
+//!  # todo!()
+//! }
+//! ```
+//!
+//! That can be later used as `macro` in your code:
+//! ```
+//! # use token_goblin::munch;
+//! # macro_rules! my_charm {
+//! #   ($($tt:tt)*) => { }
+//! # }
+//! my_charm!(foo bar);
+//! ```
+//!
+//! ## Use `syn` types as input, when it needed:
+//!
+//! ```
+//! # use token_goblin::munch;
+//! # use syn::Ident;
+//! #[munch]
+//! fn my_charm(input: Ident) -> TokenStream {
+//!  quote!{#input}
+//! }
+//! let foo = 12;
+//! let x = my_charm!(foo);
+//! assert_eq!(x, 12);
+//! ```
+//!
+//! ## Emit streamingly, like `println!`:
+//! ```
+//! # use token_goblin::munch;
+//! #[munch]
+//! fn add_foo_bar(_: TokenStream) {
+//!   // ..
+//!   output_str!("42");
+//!   output! {
+//!     + 53
+//!   };
+//! }
+//! let x = add_foo_bar!();
+//! assert_eq!(x, 42 + 53);
+//! ```
+//!
+//! **Hygiene from the box, preventing `charm` to access external variables:**
+//! ```
+//! # use token_goblin::munch;
+//! #[munch]
+//! fn my_charm(input: TokenStream) -> TokenStream {
+//!   // ..
+//!  quote!(foo)
+//! }
+//! let foo = 12;
+//! let x = my_charm!(foo); // Failed: cannot find value `foo` in this scope.
+//! assert_eq!(x, 12);
+//! ```
+//!
+//! ## Provide a way to extend your types in future:
+//! ```
+//! # use token_goblin::Snif;
+//! #[derive(Snif)]
+//! pub struct MyStruct {
+//!   field: i32,
+//! }
+//! # macro_rules! some_macro {
+//! #   ($($tt:tt)*) => { }
+//! # }
+//!
+//! // In other crate user can use it like this:
+//! token_goblin::snif!(MyStruct in some_macro!());
+//! ```
+//!
+//! For more docs, and examples checkout [README.md](https://github.com/vldm/token-goblin/blob/master/README.md)
+//! or [`example_readme`](https://github.com/vldm/token-goblin/blob/master/example_readme/README.md)
+//!
+//! For future full example check out [`struct_of_arrays`](https://github.com/vldm/token-goblin/blob/master/token-goblin/examples/struct_of_arrays.rs).
+//!
 use proc_macro::TokenStream;
 #[macro_use]
 mod errors;
@@ -45,6 +130,7 @@ pub(crate) const NO_CACHE: bool = false;
 
 ///
 /// This is an internal macro, used to proxy macro expansion calls to the real code in dylib.
+/// Think of it as the goblin's errand-runner, fetching the real spell from the back room.
 ///
 #[proc_macro]
 #[doc(hidden)]
@@ -135,6 +221,8 @@ pub fn derive_snif_impl(input: TokenStream) -> TokenStream {
 
 /// The version of `#[derive(Snif)]` that can be used as attribute for any item, not only struct/union/enum.
 ///
+/// *Same goblin nose, just pointed at the rest of the menu.*
+///
 /// Use
 /// ```
 /// #[token_goblin::derive_snif]
@@ -189,8 +277,45 @@ pub fn vanish(_attr: TokenStream, input: TokenStream) -> TokenStream {
     })
 }
 
-/// Ask token goblin to share knowledge about item in macro.
+/// Ask token goblin to share knowledge about item into a `charm`.
 ///
+/// ```
+/// # use token_goblin::Snif;
+/// #[derive(Snif)]
+/// struct MyStruct {
+///   field: i32,
+/// }
+/// ```
+/// will generate a macro with similar name:
+/// ```
+///  macro_rules! MyStruct {
+///    ($($tt:tt)*) => { }
+///  }
+/// ```
+/// that later can be used like this:
+/// ```
+/// # use token_goblin::Snif;
+/// # #[derive(Snif)]
+/// # struct MyStruct {
+/// #   field: i32,
+/// # }
+/// # macro_rules! some_charm {
+/// #   ($($tt:tt)*) => { }
+/// # }
+/// # use token_goblin::snif;
+///
+/// snif!(MyStruct in some_charm!());
+/// ```
+///
+/// Which will provide knowledge about `MyStruct` to `some_charm!` macro.
+/// It is best used with `token-goblin-runtime::SniffedEntries` as input parameter.
+/// ```
+/// #[token_goblin::munch]
+/// fn some_charm(input: SniffedEntries) -> TokenStream {
+///   // ..
+///  # todo!()
+/// }
+/// ```
 #[proc_macro]
 pub fn snif(input: TokenStream) -> TokenStream {
     timed!("snif", {
@@ -202,6 +327,8 @@ pub fn snif(input: TokenStream) -> TokenStream {
 
 ///
 /// Adaptor to function-like macro, that allows using them as derive macro.
+///
+/// *A little goblin disguise: a plain `charm` wears a `#[derive(..)]` hat.*
 ///
 /// ```
 /// # macro_rules! path_to_macro {
@@ -221,7 +348,7 @@ pub fn snif(input: TokenStream) -> TokenStream {
 /// struct MyStruct {
 ///   field: i32,
 /// }
-/// path_to_macro!(MyStruct { field: 42 });
+/// path_to_macro!(struct MyStruct { field: i32 });
 /// ```
 #[proc_macro_derive(Spit, attributes(charm))]
 pub fn derive_spit(input: TokenStream) -> TokenStream {
@@ -232,6 +359,31 @@ pub fn derive_spit(input: TokenStream) -> TokenStream {
     })
 }
 
+/// The goblin chews on your item and spits the result straight back into place.
+/// Usefull where `#[derive(Spit)]` is not applicable, for items like trait, mod.
+///
+/// Note: unlike `#[derive(Spit)]` this macro will consume the item. So if you need it, your
+/// `charm` should emit it back.
+///
+/// ```
+/// # macro_rules! path_to_macro {
+/// #   ($($tt:tt)*) => { }
+/// # }
+/// # use token_goblin::spit;
+///
+/// #[spit(path_to_macro)]
+/// trait Foo {
+///  // ...
+/// }
+/// ```
+/// will expand to:
+/// ```
+/// # macro_rules! path_to_macro {
+/// #   ($($tt:tt)*) => { }
+/// # }
+///
+/// path_to_macro!(trait Foo { /* ... */ });
+/// ```
 #[proc_macro_attribute]
 pub fn spit(attr: TokenStream, item: TokenStream) -> TokenStream {
     timed!("spit", {

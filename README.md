@@ -36,6 +36,8 @@ Note: beacause `token-goblin::munch` are macros that generate macros, **charm** 
 
 # Usecases
 
+*A well-fed goblin is a productive goblin. Here is what it does once it has chewed through your tokens.*
+
 ## Simple string based API like in `crabtime`
 
 Some users don't want to mess with `proc-macro` API, they found it foreign and confusing.
@@ -104,33 +106,35 @@ Or, you can define multiple `charms` in one module, and extend input param
 <details>
   <summary>Or, you can define multiple `charms` in one module, and extend input param</summary>
 
-    ```rust
-    #[token_goblin::munch]
-    mod macros {
-        struct StructParam {
-            // ..
-        }
-        impl syn::parse::Parse for MyStruct {
-            //..
-        }
-        /// Note: ALL `pub fn`/`pub(crate) fn` are considered as entrypoints.
-        /// Note2: No need to write `#[token_goblin::munch]` before each `pub fn`, it's already implied.
-        pub fn generate_enums(components: CommaSeparated<Token>) -> TokenStream {
-            // ..
-        }
-        pub fn generate_structs(param: StructParam) -> TokenStream {
-            // ..
-        }
+```rust
+#[token_goblin::munch]
+mod macros {
+    struct StructParam {
+        // ..
     }
+    impl syn::parse::Parse for MyStruct {
+        //..
+    }
+    /// Note: ALL `pub fn`/`pub(crate) fn` are considered as entrypoints.
+    /// Note2: No need to write `#[token_goblin::munch]` before each `pub fn`, it's already implied.
+    pub fn generate_enums(components: CommaSeparated<Token>) -> TokenStream {
+        // ..
+    }
+    pub fn generate_structs(param: StructParam) -> TokenStream {
+        // ..
+    }
+}
 
-    macros::generate_enums!["X", "Y", "Z", "W", "V", "U", "T", "S", "R", "Q"];
-    macros::generate_structs!{Foo};
-    ```
+macros::generate_enums!["X", "Y", "Z", "W", "V", "U", "T", "S", "R", "Q"];
+macros::generate_structs!{Foo};
+```
 
 
 </details>
 
 ## Probes, and evals
+
+*Sometimes the goblin just sits by the fire and counts things in its head, so you don't have to at runtime.*
 
 The other common cases for macros is to precomupte some data.
 `crabtime` provides `eval` macro for this purpose.
@@ -216,134 +220,134 @@ But working with TokenStream introduce some boilerplate, and some macros should 
 <summary>Example of TTs muncher rewrite as example</summary>
 
 
-    [TTs muncher](https://lukaswirth.dev/tlborm/decl-macros/patterns/tt-muncher.html) is a technique of writing recursive declarative macros, to parse complex input.
+[TTs muncher](https://lukaswirth.dev/tlborm/decl-macros/patterns/tt-muncher.html) is a technique of writing recursive declarative macros, to parse complex input.
 
-    If we took example from link above (slightly modified):
+If we took example from link above (slightly modified):
 
-    ```rust
-    macro_rules! trace {
-        () => {};
+```rust
+macro_rules! trace {
+    () => {};
 
-        ($name:ident; $($tail:tt)*) => {{
-            println!("{} = {:?}", stringify!($name), $name);
-            trace!($($tail)*);
-        }};
+    ($name:ident; $($tail:tt)*) => {{
+        println!("{} = {:?}", stringify!($name), $name);
+        trace!($($tail)*);
+    }};
 
-        ($name:ident = $value:expr; $($tail:tt)*) => {{
-            let $name = $value;
-            println!("{} = {:?}", stringify!($name), $name);
-            trace!($($tail)*);
-        }};
-    }
-    ```
+    ($name:ident = $value:expr; $($tail:tt)*) => {{
+        let $name = $value;
+        println!("{} = {:?}", stringify!($name), $name);
+        trace!($($tail)*);
+    }};
+}
+```
 
-    It expects input in format:
+It expects input in format:
 
-    ```rust
-    let a = 10;
-    trace! {
-        x = 2 + 3;
-        y = x * 10;
-        x;
-        y;
-    }
-    ```
-    expands to something like:
+```rust
+let a = 10;
+trace! {
+    x = 2 + 3;
+    y = x * 10;
+    x;
+    y;
+}
+```
+expands to something like:
 
-    ```rust
+```rust
+{
+    let x = 2 + 3;
+    println!("x = {:?}", x);
     {
-        let x = 2 + 3;
-        println!("x = {:?}", x);
+        let y = x * 10;
+        println!("y = {:?}", y);
         {
-            let y = x * 10;
-            println!("y = {:?}", y);
+            println!("x = {:?}", x);
             {
-                println!("x = {:?}", x);
-                {
-                    println!("y = {:?}", y);
-                }
+                println!("y = {:?}", y);
             }
         }
     }
-    ```
+}
+```
 
-    and produces output into console:
-    ```
-    x = 5
-    y = 50
-    x = 5
-    y = 50
-    ```
+and produces output into console:
+```
+x = 5
+y = 50
+x = 5
+y = 50
+```
 
 
-    Rewritting it as to proc-macro `TokenStream` API, will increase amount of code, and contain a lot of boilerplate:
+Rewritting it as to proc-macro `TokenStream` API, will increase amount of code, and contain a lot of boilerplate:
 
-    ```rust
-    #[token_goblin::munch]
-    fn trace_cycle(input: TokenStream) {
-        let mut iter = input.into_iter().peekable();
+```rust
+#[token_goblin::munch]
+fn trace_cycle(input: TokenStream) {
+    let mut iter = input.into_iter().peekable();
 
-        while iter.peek().is_some() {
-            let Some(TokenTree::Group(g)) = iter.next() else {
-                panic!("Expected group");
-            };
-            let Some(TokenTree::Ident(ident)) = iter.next() else {
-                panic!("Expected ident");
-            };
-            let mut expr = (&mut iter)
-                .take_while(|token| !matches!(token, TokenTree::Punct(p) if p.as_char() == ';'))
-                .collect::<Vec<_>>();
+    while iter.peek().is_some() {
+        let Some(TokenTree::Group(g)) = iter.next() else {
+            panic!("Expected group");
+        };
+        let Some(TokenTree::Ident(ident)) = iter.next() else {
+            panic!("Expected ident");
+        };
+        let mut expr = (&mut iter)
+            .take_while(|token| !matches!(token, TokenTree::Punct(p) if p.as_char() == ';'))
+            .collect::<Vec<_>>();
 
-            let let_stmt = if expr.is_empty() {
-                quote! {}
-            } else {
-                quote! {
-                    let #ident  #(#expr)*;
-                }
-            };
-            let ident_str = ident.to_string();
-            output! {
-                #let_stmt;
-                writeln!(#g, "{} = {:?}", #ident_str, #ident).ok();
+        let let_stmt = if expr.is_empty() {
+            quote! {}
+        } else {
+            quote! {
+                let #ident  #(#expr)*;
             }
-        }
-        if iter.peek().is_some() {
-            panic!("Expected end of input");
+        };
+        let ident_str = ident.to_string();
+        output! {
+            #let_stmt;
+            writeln!(#g, "{} = {:?}", #ident_str, #ident).ok();
         }
     }
-    ```
-
-    Using `syn` with `syn-derive` might help with main logic:
-
-    ```rust
-    pub fn trace_syn(input: TraceInput) -> TokenStream {
-        let mut out = TokenStream::new();
-
-        for TraceStmt {
-            writer,
-            ident,
-            value,
-        } in input.0
-        {
-            let ident_str = ident.to_string();
-
-            let let_stmt = match value {
-                TraceValue::Some { expr, .. } => quote! { let #ident = #expr; },
-                TraceValue::None => quote! {},
-            };
-
-            out.extend(quote! {
-                #let_stmt
-                writeln!(#writer, "{} = {:?}", #ident_str, #ident).ok();
-            });
-        }
-
-        out
+    if iter.peek().is_some() {
+        panic!("Expected end of input");
     }
-    ```
+}
+```
 
-    It still requires defining `TraceInput` and `TraceStmt` structs, and `syn::parse::Parse` implementation for them.
-    See [example_readme/examples/ttmunch-replace.rs](example_readme/examples/ttmunch-replace.rs) for more details.
+Using `syn` with `syn-derive` might help with main logic:
+
+```rust
+pub fn trace_syn(input: TraceInput) -> TokenStream {
+    let mut out = TokenStream::new();
+
+    for TraceStmt {
+        writer,
+        ident,
+        value,
+    } in input.0
+    {
+        let ident_str = ident.to_string();
+
+        let let_stmt = match value {
+            TraceValue::Some { expr, .. } => quote! { let #ident = #expr; },
+            TraceValue::None => quote! {},
+        };
+
+        out.extend(quote! {
+            #let_stmt
+            writeln!(#writer, "{} = {:?}", #ident_str, #ident).ok();
+        });
+    }
+
+    out
+}
+```
+
+It still requires defining `TraceInput` and `TraceStmt` structs, and `syn::parse::Parse` implementation for them.
+See [example_readme/examples/ttmunch-replace.rs](example_readme/examples/ttmunch-replace.rs) for more details.
 
 </details>
 
@@ -439,6 +443,46 @@ cargo test -p token-goblin --test fixtures
 
 # Usage recommendations
 
+Some hints and recommendation for using `token-goblin` in your projects.
+
+## IDE support
+
+As with offline build, it is recommended to add `token-goblin-runtime` to `[dev-dependencies]` in your `Cargo.toml`. This will help rust-analyzer to find needed crate, and provide important semantic information for your macros.
+
+## Lazieness
+
+`token-goblin::munch` provides `lazy` attribute, that allows enforcing lazieness of charm compilation.
+
+By default all charms generated by `token-goblin::munch` are eager. This means, that charm is compiled during expansion of `#[munch]` attribute, the users of `charm` only use compiled dylib.
+
+This setup is faster, since `charm` is compiled only once, and every users (expansion of `charm` itself) should skip compiliation step.
+
+But, during development, flycheck could call `cargo check` on broken code, and spam with errors, in vscode + lens this can slowdown IDE performance.
+Therefore, you can set `lazy` to `true` in `#[token_goblin::munch]` attributes.
+
+```rust
+#[token_goblin::munch(lazy)] // or #[token_goblin::munch(lazy = true)]
+fn foo(input: TokenStream) -> TokenStream {
+    // ..
+}
+```
+
+with this setup, `#[munch]` will not compile the `charm`, instead during `foo` expansion, compiliation will be triggered.
+Note: that for same code, compiliation is only triggered once, since `token-goblin` caches the compiled dylib.
+
+## Debugging
+
+Also, you can set `TOKEN_GOBLIN_PRINT_LEVEL` environment variable to `1-4` to enable debug prints.
+```bash
+1 - print basic info
+2 - print timings
+3 - print input and output of internal macros
+4 - print environment variables
+```
+
+Also, you can use `println` / `eprintln` / `dbg` and other macros to debug your charms.
+
+
 ## Share cache or not?
 
 By default all charms generated by `token-goblin::munch` will share same build-cache directory.
@@ -455,9 +499,11 @@ fn foo(input: TokenStream) -> TokenStream {
 
 This will generate force charm to use separate build-cache directory, and therefore will not be affected by other charms.
 
-I recommend use `split_cache` for "big" charms only, that requires a lot of dependencies, or takes a lot of time to build.
+I recommend use `split_cache` for "big" charms only, that requires a lot of dependencies, or takes a lot of time to build. This is because charm with separated cache can be compiled in parallel with other charms.
 
 # Ceveats:
+
+*Even a helpful goblin has its quirks. Mind these before you let it loose.*
 
 - only `proc-macro2::fallback` is used (no `proc-macro` api is available) in generated crates (which introduce some limitations)
 - mixed_site - is not supported by `proc_macro2::fallback`

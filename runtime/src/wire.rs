@@ -1,3 +1,4 @@
+#![allow(rustdoc::private_intra_doc_links)]
 //! Guest-side wire format for the dylib boundary.
 //! It's an internall module, but feel free to enjoy the docs.
 
@@ -179,7 +180,7 @@ fn source_range(span: Span, anchor: Option<Span>) -> Range<usize> {
     }
 }
 
-// A hack that provide extra info
+/// Handles panics and converts them to compile errors with location info.
 mod panic {
     use core::fmt;
     use std::{

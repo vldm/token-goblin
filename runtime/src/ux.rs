@@ -2,6 +2,7 @@
 //! Inspired by `crabtime`.
 //!
 //! Allows to receiving inputs and producing outputs in non `TokenStream` way.
+//! This is the boring goblin craft: fewer raw token piles, more typed little bundles.
 //!
 //! E.g. instead of:
 //! ```
@@ -113,6 +114,8 @@ impl SnifedEntry {
 }
 /// Represents a comma separated list of parsable values.
 ///
+/// *A tidy little bundle of tokens, comma-sorted by the goblin before it hands them over.*
+///
 /// Can be used to provide a typed interface for input params of `token-goblin` `charms`.
 ///
 /// Example:
@@ -135,6 +138,8 @@ impl From<CommaSeparated<Token>> for Vec<String> {
 }
 
 /// Represents either `Ident` or `LitStr` token.
+///
+/// *A bare ident or a quoted string - the goblin chews both the same.*
 ///
 /// Used when macro need a simple interface for input, and user can decide a way to provide string.
 ///
@@ -225,7 +230,9 @@ fn compile_error(text: &str) -> TokenStream {
     }
 }
 
-/// Emit formatted string as token stream
+/// Emit formatted string as token stream.
+///
+/// *The goblin's quick spit: hand it a string, it coughs up tokens.*
 ///
 /// Example:
 /// ```
@@ -234,6 +241,7 @@ fn compile_error(text: &str) -> TokenStream {
 /// ```
 ///
 /// This will spit `foo + 2` token stream (ident, punct, literal) as output of the macro, just before emitting result.
+///
 /// The format of input is the same as in `format!` macro.
 ///
 /// Note: If input is invalid `TokenStream` this will emit compile error.
@@ -244,7 +252,7 @@ macro_rules! output_str {
     };
 }
 
-/// Emit quote as token stream
+/// Emit quote as token stream.
 ///
 /// Example:
 /// ```
