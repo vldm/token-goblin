@@ -176,7 +176,7 @@ dependencies = [
 
 [[package]]
 name = "token-goblin"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "libloading",
@@ -245,4 +245,4 @@ checksum = "0592e1c9d151f854e6fd382574c3a0855250e1d9b2f99d9281c6e6391af352f1"
 
 [[patch.unused]]
 name = "token-goblin-runtime"
-version = "0.1.0"
+version = "0.2.0"

@@ -10,7 +10,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-token-goblin-runtime = "0.1"
+token-goblin-runtime = "0.2"
 
 # goblin-stencil: dependencies
 

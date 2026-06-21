@@ -1,6 +1,6 @@
 [package]
 name = "token-goblin"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.89"
 description = "Inline procedural macros without a separate proc-macro crate."
@@ -26,7 +26,7 @@ libloading = "0.9"
 [dev-dependencies]
 trybuild = "1.0"
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
-token-goblin-runtime = { path = "../runtime" }
+token-goblin-runtime = { version = "0.2", path = "../runtime" }
 syn = { version = "2.0", features = ["full"] }
 
 [features]

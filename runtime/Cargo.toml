@@ -1,6 +1,6 @@
 [package]
 name = "token-goblin-runtime"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Runtime support types for token-goblin generated inline procedural macros."
 license.workspace = true
@@ -14,4 +14,4 @@ proc-macro2 = { version = "1.0", default-features = false, features = [
     "span-locations",
 ] }
 quote = "1.0"
-syn = { version = "2.0", features = ["full"] }
+syn = { version = "2.0", features = ["full", "extra-traits"] }

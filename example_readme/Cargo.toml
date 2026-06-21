@@ -6,10 +6,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-token-goblin = { path = "../token-goblin" }
+token-goblin = { version = "0.2", path = "../token-goblin" }
 
 [dev-dependencies]
-token-goblin-runtime = { path = "../runtime" }
+token-goblin-runtime = { version = "0.2", path = "../runtime" }
 syn = { version = "2.0", features = ["full"] }
 quote = "1.0"
 

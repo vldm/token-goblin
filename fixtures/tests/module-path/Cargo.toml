@@ -14,4 +14,4 @@ name = "module_path_fixture"
 path = "src/main.rs"
 
 [dependencies]
-token-goblin = { path = "../../../token-goblin" }
+token-goblin = { version = "0.2", path = "../../../token-goblin" }
