@@ -5,7 +5,7 @@ macro_rules! eval {
             fn eval_inner(_: TokenStream) -> TokenStream {
                 use std::str::FromStr;
                 let x = $($expr)*;
-                TokenStream::from_str(&format!("{}", x)).unwrap()
+                quote!{ #x }
             }
             eval_inner!($($expr)*)
         }

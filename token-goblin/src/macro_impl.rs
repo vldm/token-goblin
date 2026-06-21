@@ -187,7 +187,6 @@ pub fn munch_impl(args: TokenStream, item_tts: TokenStream) -> Result<TokenStrea
 }
 
 pub fn proxy_impl(input: proc_macro2::TokenStream) -> Result<proc_macro2::TokenStream> {
-    debug!("proxy input: {}", input);
     let input: ProxyInput = syn::parse2(input)?;
 
     debug!("proxy input parsed: {:?}", input);
@@ -286,7 +285,7 @@ pub fn derive_snif_attr_impl(input: TokenStream) -> Result<TokenStream> {
 }
 
 pub fn snif_impl(input: TokenStream) -> Result<TokenStream> {
-    debug!("snif expand input: {}", input);
+    debug!("snif input: {}", input);
     let SnifInput {
         chain,
         macro_path,
@@ -859,7 +858,12 @@ impl Debug for ProxyMode {
                 write!(f, "Precompiled {{ dylib_path: {} }}", dylib_path.value())
             }
             ProxyMode::Lazy { config, src } => {
-                write!(f, "Lazy {{ config: {config}, src: {src} }}")
+                let generated_src = if crate::path::env_print_level(4) {
+                    src.to_string()
+                } else {
+                    "<skipped>".to_string()
+                };
+                write!(f, "Lazy {{ config: {config}, src: {generated_src} }}")
             }
         }
     }

@@ -1,10 +1,12 @@
 # Ensure that printing and debug enabled.
-[build]
-rustflags = [
-    "--cfg",
-    "token_goblin_print_timings",
-    "--cfg",
-    "token_goblin_debug",
-]
+
 [patch.crates-io]
 token-goblin-runtime = { path = "./runtime" }
+
+[env]
+TOKEN_GOBLIN_PRINT_LEVEL = "3"
+
+[build]
+# Because we use multiple test workspaces (see fixtures, and example_readme),
+# set one target directory for them.
+target-dir = "target"

@@ -144,7 +144,7 @@ macro_rules! eval {
             fn eval_inner(_: TokenStream) -> TokenStream {
                 use std::str::FromStr;
                 let x = $($expr)*;
-                TokenStream::from_str(&format!("{}", x)).unwrap()
+                quote!{ #x }
             }
             eval_inner!($($expr)*)
         }
@@ -159,6 +159,8 @@ fn main() {
 // prints:
 // x: 18
 ```
+
+Note: that any expression is embedded into charm as code, and cannot use external variables or call functions from your crate.
 
 <details>
 <summary>Some cursed examples of using proc-macros</summary>

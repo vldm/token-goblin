@@ -75,12 +75,17 @@ impl TemplateContext {
 // custom because syn::Visibility doesn't implement Debug
 impl Debug for TemplateContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let generated_content_debug = if crate::path::env_print_level(3) {
+            self.generated_content.to_string()
+        } else {
+            "<skipped>".to_string()
+        };
         f.debug_struct("TemplateContext")
             .field("package_name", &self.package_name)
             .field("package_extra", &self.package_extra)
             .field("source_metadata", &self.source_metadata)
             .field("entries", &self.entries.len())
-            .field("generated_content", &"<skipped>")
+            .field("generated_content", &generated_content_debug)
             .field(
                 "mod_name",
                 &self

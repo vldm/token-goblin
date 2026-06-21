@@ -27,10 +27,13 @@ impl MapCompileError for super::Result<proc_macro2::TokenStream> {
 }
 
 macro_rules! debug {
-    ($($message:tt)*) => {
-        if crate::DEBUG {
+    (level: $level:expr, $($message:tt)*) => {
+        if crate::path::env_print_level($level) && crate::DEBUG {
             let fmt = format_args!($($message)*);
             eprintln!("[{module}] {fmt}", module = module_path!());
         }
+    };
+    ($($message:tt)*) => {
+        debug!(level: 0, $($message)*);
     };
 }

@@ -43,14 +43,14 @@ impl SpanLocation {
                 })?;
         let manifest_path = path::manifest_path()?;
         let fs_workspace_root = metadata::workspace_root_for_manifest(&manifest_path)?;
-        debug!("workspace_path: {}", fs_workspace_root.display());
-        debug!("fs_crate_manifest_dir: {}", fs_crate_manifest_dir.display());
+        debug!(level: 3, "workspace_path: {}", fs_workspace_root.display());
+        debug!(level: 3, "fs_crate_manifest_dir: {}", fs_crate_manifest_dir.display());
 
         let fs_module_path_absolute_or_relative = span
             .local_file()
             .ok_or_else(|| error!(Span::call_site() => "SpanLocation: Failed to get local file"))?;
 
-        debug!(
+        debug!(level: 3,
             "fs_module_path_absolute_or_relative: {}",
             fs_module_path_absolute_or_relative.display()
         );
@@ -62,7 +62,7 @@ impl SpanLocation {
         let discovered = targets::TargetRoot::discover(&manifest_path, &fs_crate_manifest_dir)?;
         let target = targets::TargetRoot::select_for_file(&discovered, &module_file)?.clone();
 
-        debug!(
+        debug!(level: 3,
             "active target: {:?} crate_name={} root={} target_root={}",
             target.kind,
             target.crate_name,
@@ -108,7 +108,7 @@ impl SpanLocation {
         fs_module_path_absolute_or_relative: &Path,
     ) -> Result<PathBuf> {
         let fs_module_path_absolute = fs_workspace_root.join(fs_module_path_absolute_or_relative);
-        debug!(
+        debug!(level: 3,
             "fs_module_path_absolute: {}",
             fs_module_path_absolute.display()
         );

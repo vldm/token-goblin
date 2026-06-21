@@ -126,7 +126,7 @@ fn munch_use_snifed_items() {
     #[token_goblin::munch(lazy)]
     fn stringify_fields(input: SnifedItems) -> TokenStream {
         let result = input
-            .items
+            .entries
             .iter()
             .filter_map(|item| match &item.item {
                 syn::Item::Struct(struct_item) => Some(struct_item),

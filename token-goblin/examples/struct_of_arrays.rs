@@ -36,8 +36,8 @@ mod soa {
     impl TryFrom<SnifedItems> for SoaInput {
         type Error = syn::Error;
         fn try_from(value: SnifedItems) -> Result<Self, syn::Error> {
-            let name = syn::parse2(value.input.clone())?;
-            match value.items.first().cloned() {
+            let name = syn::parse2(value.macro_input.clone())?;
+            match value.entries.first().cloned() {
                 Some(si) => {
                     let syn::Item::Struct(item) = si.item else {
                         return Err(syn::Error::new(si.span(), "Expected struct"));
@@ -138,6 +138,7 @@ mod soa {
         }
     }
 }
+//
 
 token_goblin::snif!(Foo in soa::multi_array_vec!(SoaFoo));
 token_goblin::snif!(Foo in soa::push_pop_impl!(SoaFoo));

@@ -14,6 +14,7 @@ pub struct Output {
     pub spans: Vec<OutputEntry>,
 }
 /// Single entry in the output.
+///
 /// THIS TYPE SHOULD MATCH `token_goblin::span_recovery::OutputEntry`
 #[derive(PartialEq, Eq, Debug)]
 pub struct OutputEntry {
@@ -66,9 +67,6 @@ fn panic_to_compile_error(e: PanicReport) -> (TokenStream, Option<PanicLocation>
             PanicLocation::to_string
         )
     );
-    // we duplicate panics, to visualize it as error on both sides:
-    // - call site of macro
-    // - macro definition position
     let msg = syn::Error::new(Span::call_site(), message).to_compile_error();
 
     (msg, e.location)

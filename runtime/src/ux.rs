@@ -51,32 +51,61 @@ use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
 use syn::parse::{Parse, ParseStream, Parser};
 
+/// Represents a single entry in `snif!` route.
+///
+/// Used to represent a single result of handled `snif!` macro.
+///
+/// Example:
+/// ```no_build
+/// #[derive(token_goblin::Snif)]
+/// struct Foo {
+///     x: i32,
+/// }
+///
+/// token_goblin::snif!(Foo in stringify_our!()); // -> "Foo => { struct Foo { x : i32, } }" is one entry
+/// ```
+///
 #[derive(Clone)]
-pub struct SnifedItem {
-    pub path: syn::Path,
+pub struct SniffedEntry {
+    /// Path to macro that was used to generate this entry.
+    pub snif_path: syn::Path,
     arrow: syn::Token![=>],
     brace: syn::token::Brace,
+    /// Item that was snifed.
     pub item: syn::Item,
 }
+/// Represents a group of `snif!` entries.
+///
+/// Used to represent a group of `snif!` entries in a macro.
+///
+/// Example:
+/// ```no_build
+///  token_goblin::snif!(Foo, Bar in stringify_our!("extra tokens"));
+///  // -> "Foo => { struct Foo { x : i32, } }" is one entry
+///  // "Bar => { struct Bar { x : i32, } }" is another
+///  //
+///  // "extra tokens" is passed to the macro as input.
+/// ```
+///
 #[derive(Clone)]
 pub struct SnifedItems {
     first_group: syn::token::Bracket,
-    pub items: Vec<SnifedItem>,
+    pub entries: Vec<SniffedEntry>,
     second_group: syn::token::Bracket,
-    pub input: TokenStream,
+    pub macro_input: TokenStream,
 }
 impl SnifedItems {
     #[must_use]
     pub fn span(&self) -> proc_macro2::Span {
-        self.items
+        self.entries
             .first()
-            .map_or_else(Span::call_site, SnifedItem::span)
+            .map_or_else(Span::call_site, SniffedEntry::span)
     }
 }
-impl SnifedItem {
+impl SniffedEntry {
     #[must_use]
     pub fn span(&self) -> proc_macro2::Span {
-        self.path
+        self.snif_path
             .segments
             .first()
             .map_or_else(Span::call_site, |segment| segment.ident.span())
@@ -293,7 +322,7 @@ impl<T: Parse> Parse for CommaSeparated<T> {
     }
 }
 
-impl syn::parse::Parse for SnifedItem {
+impl syn::parse::Parse for SniffedEntry {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         // Skip ident + `::`, find `=>` in tokenstream. then feed bounded stream into `syn::Path::parse`
 
@@ -305,8 +334,8 @@ impl syn::parse::Parse for SnifedItem {
         let brace = syn::braced!(content in input);
         let item = content.parse()?;
 
-        Ok(SnifedItem {
-            path,
+        Ok(SniffedEntry {
+            snif_path: path,
             arrow,
             brace,
             item,
@@ -319,22 +348,22 @@ impl syn::parse::Parse for SnifedItems {
         let first_group = syn::bracketed!(items_input in input);
         let mut items = Vec::new();
         while !items_input.is_empty() {
-            items.push(SnifedItem::parse(&items_input)?);
+            items.push(SniffedEntry::parse(&items_input)?);
         }
         let macro_input;
         let second_group = syn::bracketed!(macro_input in input);
 
         Ok(SnifedItems {
             first_group,
-            items,
+            entries: items,
             second_group,
-            input: macro_input.parse()?,
+            macro_input: macro_input.parse()?,
         })
     }
 }
-impl ToTokens for SnifedItem {
+impl ToTokens for SniffedEntry {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        self.path.to_tokens(tokens);
+        self.snif_path.to_tokens(tokens);
         self.arrow.to_tokens(tokens);
         self.brace.surround(tokens, |tokens| {
             self.item.to_tokens(tokens);
@@ -344,12 +373,12 @@ impl ToTokens for SnifedItem {
 impl ToTokens for SnifedItems {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         self.first_group.surround(tokens, |tokens| {
-            for item in &self.items {
+            for item in &self.entries {
                 item.to_tokens(tokens);
             }
         });
         self.second_group.surround(tokens, |tokens| {
-            self.input.to_tokens(tokens);
+            self.macro_input.to_tokens(tokens);
         });
     }
 }

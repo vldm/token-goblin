@@ -151,6 +151,7 @@ fn cargo_command() -> Command {
 /// Check if dylib is exists (and was built with compatible toolchain)
 fn check_cached_dylib(generated: &GeneratedCrate, profile: BuildProfile) -> Option<DylibBuild> {
     let dylib_path = generated.dylib_path(profile);
+    debug!(level: 3, "NO_CACHE: {}, dylib_path_exists: {}, is_file: {}", crate::NO_CACHE, dylib_path.exists(), dylib_path.is_file());
     if crate::NO_CACHE || !dylib_path.is_file() {
         return None;
     }
@@ -179,7 +180,9 @@ pub fn compile_crate(generated: &GeneratedCrate, profile: BuildProfile) -> Resul
             manifest_path.display()
         );
     }
-    if let Some(dylib) = check_cached_dylib(generated, profile) {
+    if let Some(dylib) = timed!("check_cached_dylib", {
+        check_cached_dylib(generated, profile)
+    }) {
         return Ok(dylib);
     }
 

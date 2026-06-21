@@ -34,7 +34,7 @@ pub(crate) const PRINT_TIMINGS: bool = cfg!(token_goblin_print_timings) || path:
 /// (Also requires `DEBUG` to be enabled)
 ///
 /// Internal only feature, not exposed to the user.
-pub(crate) const DEBUG_ENV: bool = false || path::env_print_level(3);
+pub(crate) const DEBUG_ENV: bool = path::env_print_level(4);
 
 /// Internal feature that prevent cache checking for dylib.
 pub(crate) const NO_CACHE: bool = false;
@@ -93,7 +93,8 @@ pub fn munch(attr: TokenStream, item: TokenStream) -> TokenStream {
             .map_compile_error()
             .into()
     });
-    debug!("munch result: {result}");
+    debug!(level: 3, "munch result: {result}");
+
     result
 }
 
