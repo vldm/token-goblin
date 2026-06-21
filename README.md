@@ -211,7 +211,103 @@ Note: I there is a plan to implement `wasm` as feature that will enforce sandbox
 </details>
 
 
-## Rewriting declarative macros to proc-macro API
+## Reflection?
+
+*In computer science, reflective programming or reflection is the ability of a process to examine, introspect, and modify its own structure and behavior.*
+
+Reflection is a powerful feature, that allows to dynamically generate code, without knowing the exact types, by observing their structure.
+The `zig` has `comptime` keyword, that allows to execute code at compile time, and observe the structure of the code.
+In Rust we only have derives, They could replace some kind of reflections, e.g. by providing a way to generate some traits based on the `struct` fields. The one missing problem, is they not extendable.
+E.g. the one who write `struct Foo` define the list of derived traits, and this list is not extendable.
+
+So if you want to extend some type with your custom trait, you need to duplicate the `Foo` definition somewhere in some form. Reflection could solve this problem, by providing `shape` of the type, and then generate the trait based on it.
+
+`token-goblin` have similar feature called `Snif`, that allows to collect information about some type, and pass it to another macro.
+
+```rust
+#[derive(token_goblin::Snif)]
+struct Foo {
+    x: i32,
+}
+#[token_goblin::munch(lazy)]
+fn generate_getters(input: SnifedEntries) -> TokenStream {
+    let syn::Item::Struct(item) = &input.entries[0].item else {
+        return syn::Error::new(input.span(), "Expected struct").to_compile_error();
+    };
+    let name = &item.ident;
+    let (fields, types): (Vec<syn::Ident>, Vec<syn::Type>) = item
+        .fields
+        .iter()
+        .cloned()
+        .map(|field| (field.ident.unwrap(), field.ty))
+        .unzip();
+    quote! {
+        impl #name {
+            #(
+                pub fn #fields(&self) -> &#types {
+                    &self.#fields
+                }
+            )*
+        }
+    }
+}
+
+token_goblin::snif!(Foo in generate_getters!(extra args));
+```
+
+`generate_getters!()` will receive input in format:
+`[Foo => { struct Foo { x : i32, } }] [ extra args]`
+
+and can generate code based on the information about types (in this example generate getters for `Foo`).
+
+This example can be found in [example_readme/examples/generate_getters.rs](example_readme/examples/generate_getters.rs)
+
+More future-ful example that convert array of structs into struct of arrays can be found in [token-goblin/examples/struct_of_arrays.rs](token-goblin/examples/struct_of_arrays.rs)
+
+
+## Multiple of small derives
+
+Sometimes in big projects, you need to define multiple small derives, e.g. parsing/emitting/printing functional are distinct, and should be separated. Placing them in one "macro" crate might be not the better choice.
+As opposite, `token-goblin` allows you to split the logic into multiple "macro" crates, and use them as dependencies.
+
+```rust
+#[derive(token_goblin::Snif)]
+struct Foo {
+    x: i32,
+}
+
+#[token_goblin::munch]
+fn generate_parser(input: SnifedEntries) -> TokenStream {
+   // ..
+}
+
+#[token_goblin::munch]
+fn generate_emitter(input: SnifedEntries) -> TokenStream {
+}
+
+token_goblin::snif!(Foo in generate_parser!());
+token_goblin::snif!(Foo in generate_emitter!());
+```
+
+This aproach is partially shown in [token-goblin/examples/struct_of_arrays.rs](token-goblin/examples/struct_of_arrays.rs).
+But i use it in real project, where i want to extend my type with additional meta-data, but want to keep derive logic separated, it looks like this:
+```rust
+#[derive(token_goblin::Snif)]
+enum Expr {
+    #[snif(mnemonic = "lit")]
+    #[snif(arity = 0 -> 1)]
+    Lit(syn::Lit),
+    #[snif(mnemonic = "add")]
+    #[snif(arity = 2 -> 1)]
+    Add(Box<Expr>, Box<Expr>),
+}
+
+trait Printer {}
+snif!(Expr in generate_printer!());
+// ..
+```
+
+## Do i need to rewrite declarative macros to proc-macro API?
 
 While proc-macro API is more Rust-like and powerful, one might want to rewrite all declarative macros to proc-macro API.
 But working with TokenStream introduce some boilerplate, and some macros should be kept as declarative.

@@ -149,3 +149,4 @@ fn munch_use_snifed_items() {
     assert_eq!(result, "x, y");
     let result = snif!(Bar, Foo in stringify_fields!());
 }
+
