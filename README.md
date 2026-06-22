@@ -262,7 +262,7 @@ and can generate code based on the information about types (in this example gene
 
 This example can be found in [example_readme/examples/generate_getters.rs](example_readme/examples/generate_getters.rs)
 
-More future-ful example that convert array of structs into struct of arrays can be found in [token-goblin/examples/struct_of_arrays.rs](token-goblin/examples/struct_of_arrays.rs)
+More feature-full example (MultiArrayList-like from zig) that convert array of structs into struct of arrays can be found in [token-goblin/examples/struct_of_arrays.rs](token-goblin/examples/struct_of_arrays.rs)
 
 
 ## Multiple of small derives
@@ -301,9 +301,10 @@ enum Expr {
     #[snif(arity = 2 -> 1)]
     Add(Box<Expr>, Box<Expr>),
 }
-
-trait Printer {}
-snif!(Expr in generate_printer!());
+mod printer {
+  trait Printer {}g
+  snif!(Expr in generate_printer!());
+}
 // ..
 ```
 
