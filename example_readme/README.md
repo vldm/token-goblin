@@ -1,8 +1,8 @@
-Extracted to separate workspace to speedup token-goblin build, and reduce amount of dependencies.
-Also having separate workspace is mandatory, for reexports related tests, like `use_reexported_munch` test.
+This was extracted to a separate workspace to speed up the `token-goblin` build and reduce the number of dependencies.
+Having a separate workspace is also mandatory for reexport-related tests, like the `use_reexported_munch` test.
 
-Having it as a crate, rather than as fixture, allows to testing new features dirrectly in this crate.
+Having it as a crate, rather than as a fixture, allows new features to be tested directly in this crate.
 
-Since `token-goblin` is macro, expanding of examples is enough for testing.
+Since `token-goblin` is a macro, expanding examples is enough for testing.
 
-And test that checks it is located in right place is located in `token-goblin/tests/fixtures.rs:example_readme_cargo_test()`.
+The test that checks whether it is located in the right place is `token-goblin/tests/fixtures.rs:example_readme_cargo_test()`.

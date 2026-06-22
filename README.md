@@ -1,8 +1,8 @@
-# Token Goblin — munches your tokens, forge out charms
+# Token Goblin — munches your tokens, forges charms
 
 ![Token Goblin](assets/token-goblin.png)
 
-`token-goblin` is a proc-macro library for defining inline proc-macro, directly inside your crate, without separate proc-macro target.
+`token-goblin` is a proc-macro library for defining inline proc-macros directly inside your crate, without a separate proc-macro target.
 
 It is inspired by crates like `crabtime` and `inline-proc`, but aims to provide a more polished, flexible, and ergonomic API.
 
@@ -24,7 +24,7 @@ fn foo(input: TokenStream) -> TokenStream {
 }
 ```
 
-This generates a new macro, or **charm**, named foo!:
+This generates a new macro, or **charm**, named `foo!`:
 
 ```rust
 foo!(bar baz); // will expand to `bar baz`
@@ -32,18 +32,18 @@ foo!(bar baz); // will expand to `bar baz`
 
 In other words, `#[munch]` turns the function into a new macro.
 
-Note: beacause `token-goblin::munch` are macros that generate macros, **charm** term would be used for generated macros in docs for clarity (and a little bit of lore).
+Note: because `token-goblin::munch` macros generate macros, the term **charm** is used for generated macros in the docs for clarity (and a little bit of lore).
 
-# Usecases
+# Use Cases
 
 *A well-fed goblin is a productive goblin. Here is what it does once it has chewed through your tokens.*
 
-## Simple string based API like in `crabtime`
+## Simple string-based API like in `crabtime`
 
-Some users don't want to mess with `proc-macro` API, they found it foreign and confusing.
-`crabtime` showed another way to write macro - a simple string based API, that allows to use `String` and `Vec<String>` dirrectly as input of macro.
+Some users don't want to mess with the `proc-macro` API; they find it foreign and confusing.
+`crabtime` showed another way to write macros: a simple string-based API that allows `String` and `Vec<String>` to be used directly as macro input.
 
-Example adopted from `crabtime` docs:
+Example adapted from the `crabtime` docs:
 
 ```rust
 #[token_goblin::munch]
@@ -71,16 +71,15 @@ enum Enum1 { X }
 enum Enum10 { X, Y, Z, W, V, U, T, S, R, Q }
 ```
 
-Note: while it is inspired by `crabtime`, and `token-goblin` adopted this approach, instead of hardcoding `String`, `Vec<String>` type handling, **input is expected to implement `syn::parse::Parse` trait**.
-So `CommaSeparated<Token>` is just two wrappers in `token-goblin-runtime` crate, that provides required `syn::parse::Parse` implementation.
+Note: while this is inspired by `crabtime`, `token-goblin` adopts the approach without hardcoding `String` or `Vec<String>` handling. Instead, **input is expected to implement the `syn::parse::Parse` trait**.
+So `CommaSeparated<Token>` is just two wrappers in the `token-goblin-runtime` crate that provide the required `syn::parse::Parse` implementation.
 
 ## Inline proc-macro
 
-String based API is simple, but it's looses span information, and reduces IDE/diagnostics quality.
+The string-based API is simple, but it loses span information and reduces IDE/diagnostics quality.
 
-If you don't want to lose span informations, but it stills annoys you, that to implement a simple
-`proc-macro` you need to create a separate crate.
-`token-goblin` provides a classic `proc-macro2` API as well:
+If you don't want to lose span information, but are still annoyed that implementing a simple
+`proc-macro` requires a separate crate, `token-goblin` provides a classic `proc-macro2` API as well:
 
 ```rust
 #[token_goblin::munch]
@@ -89,7 +88,7 @@ fn foo(input: TokenStream) -> TokenStream {
 }
 ```
 
-And even better, it's support `syn` based types as input params:
+And even better, it supports `syn`-based types as input parameters:
 
 ```rust
 #[token_goblin::munch]
@@ -101,10 +100,10 @@ fn stringify(input: syn::Ident) -> TokenStream {
 }
 ```
 
-Or, you can define multiple `charms` in one module, and extend input param
+Or, you can define multiple `charms` in one module and extend the input parameters.
 
 <details>
-  <summary>Or, you can define multiple `charms` in one module, and extend input param</summary>
+  <summary>Or, you can define multiple `charms` in one module and extend the input parameters</summary>
 
 ```rust
 #[token_goblin::munch]
@@ -132,14 +131,14 @@ macros::generate_structs!{Foo};
 
 </details>
 
-## Probes, and evals
+## Probes and Evals
 
 *Sometimes the goblin just sits by the fire and counts things in its head, so you don't have to at runtime.*
 
-The other common cases for macros is to precomupte some data.
-`crabtime` provides `eval` macro for this purpose.
+Another common use case for macros is to precompute some data.
+`crabtime` provides an `eval` macro for this purpose.
 
-But with token-goblin, you can implement it by yourself:
+But with `token-goblin`, you can implement it yourself:
 ```rust
 macro_rules! eval {
     ($($expr:tt)*) => {
@@ -164,13 +163,13 @@ fn main() {
 // x: 18
 ```
 
-Note: that any expression is embedded into charm as code, and cannot use external variables or call functions from your crate.
+Note: any expression is embedded into the charm as code and cannot use external variables or call functions from your crate.
 
 <details>
 <summary>Some cursed examples of using proc-macros</summary>
 
-But you are not limited to simple expressions, in fact you can do any compile-time execution, like
-evaluating bytecodes, or even downloading something from the internet (using external states in macro is not recommended though).
+But you are not limited to simple expressions. In fact, you can do any compile-time execution, like
+evaluating bytecode or even downloading something from the internet (using external state in a macro is not recommended though).
 
 e.g. from [example_readme/examples/brainfuck.rs](example_readme/examples/brainfuck.rs)
 
@@ -201,12 +200,12 @@ mod brainfuck {
     // result: Hello World!
 ```
 
-While executing brainfuck program, is pure-functional and therefore fits well to `proc-macro` purposes, using system API and requesting external data is clearly misuse. But the whole crate is experiments around `proc-macro`, so i think it's fun to
+Executing a brainfuck program is purely functional and therefore fits `proc-macro` purposes well, but using system APIs and requesting external data is clearly misuse. The whole crate is an experiment around `proc-macro`, so I think it's fun to
 showcase it as well.
 
-Note: While `token-goblin` itself doesn't cache the output of `charms`, the rust itself might cache them, especially when `-Zcache-proc-macros` is enabled.
+Note: while `token-goblin` itself doesn't cache the output of `charms`, Rust itself might cache them, especially when `-Zcache-proc-macros` is enabled.
 
-Note: I there is a plan to implement `wasm` as feature that will enforce sandboxing of `charms`.
+Note: there is a plan to implement `wasm` as a feature that will enforce sandboxing of `charms`.
 
 </details>
 
@@ -215,14 +214,14 @@ Note: I there is a plan to implement `wasm` as feature that will enforce sandbox
 
 *In computer science, reflective programming or reflection is the ability of a process to examine, introspect, and modify its own structure and behavior.*
 
-Reflection is a powerful feature, that allows to dynamically generate code, without knowing the exact types, by observing their structure.
-The `zig` has `comptime` keyword, that allows to execute code at compile time, and observe the structure of the code.
-In Rust we only have derives, They could replace some kind of reflections, e.g. by providing a way to generate some traits based on the `struct` fields. The one missing problem, is they not extendable.
-E.g. the one who write `struct Foo` define the list of derived traits, and this list is not extendable.
+Reflection is a powerful feature that allows code to be generated dynamically without knowing the exact types by observing their structure.
+Zig has the `comptime` keyword, which allows code to execute at compile time and observe the structure of the code.
+In Rust, we only have derives. They can replace some kinds of reflection, e.g. by providing a way to generate some traits based on `struct` fields. The missing piece is that they are not extendable.
+For example, the person who writes `struct Foo` defines the list of derived traits, and this list is not extendable.
 
-So if you want to extend some type with your custom trait, you need to duplicate the `Foo` definition somewhere in some form. Reflection could solve this problem, by providing `shape` of the type, and then generate the trait based on it.
+So if you want to extend some type with your custom trait, you need to duplicate the `Foo` definition somewhere in some form. Reflection could solve this problem by providing the `shape` of the type and then generating the trait based on it.
 
-`token-goblin` have similar feature called `Snif`, that allows to collect information about some type, and pass it to another macro.
+`token-goblin` has a similar feature called `Snif`, which allows you to collect information about a type and pass it to another macro.
 
 ```rust
 #[derive(token_goblin::Snif)]
@@ -255,20 +254,20 @@ fn generate_getters(input: SnifedEntries) -> TokenStream {
 token_goblin::snif!(Foo in generate_getters!(extra args));
 ```
 
-`generate_getters!()` will receive input in format:
+`generate_getters!()` will receive input in this format:
 `[Foo => { struct Foo { x : i32, } }] [ extra args]`
 
-and can generate code based on the information about types (in this example generate getters for `Foo`).
+It can then generate code based on the information about types (in this example, it generates getters for `Foo`).
 
-This example can be found in [example_readme/examples/generate_getters.rs](example_readme/examples/generate_getters.rs)
+This example can be found in [example_readme/examples/generate_getters.rs](example_readme/examples/generate_getters.rs).
 
-More feature-full example (MultiArrayList-like from zig) that convert array of structs into struct of arrays can be found in [token-goblin/examples/struct_of_arrays.rs](token-goblin/examples/struct_of_arrays.rs)
+A more complete example (MultiArrayList-like from Zig) that converts an array of structs into a struct of arrays can be found in [token-goblin/examples/struct_of_arrays.rs](token-goblin/examples/struct_of_arrays.rs).
 
 
-## Multiple of small derives
+## Multiple Small Derives
 
-Sometimes in big projects, you need to define multiple small derives, e.g. parsing/emitting/printing functional are distinct, and should be separated. Placing them in one "macro" crate might be not the better choice.
-As opposite, `token-goblin` allows you to split the logic into multiple "macro" crates, and use them as dependencies.
+Sometimes in big projects, you need to define multiple small derives, e.g. parsing/emitting/printing functionality is distinct and should be separated. Placing all of them in one "macro" crate might not be the best choice.
+Instead, `token-goblin` allows you to split the logic into multiple "macro" crates and use them as dependencies.
 
 ```rust
 #[derive(token_goblin::Snif)]
@@ -289,8 +288,8 @@ token_goblin::snif!(Foo in generate_parser!());
 token_goblin::snif!(Foo in generate_emitter!());
 ```
 
-This aproach is partially shown in [token-goblin/examples/struct_of_arrays.rs](token-goblin/examples/struct_of_arrays.rs).
-But i use it in real project, where i want to extend my type with additional meta-data, but want to keep derive logic separated, it looks like this:
+This approach is partially shown in [token-goblin/examples/struct_of_arrays.rs](token-goblin/examples/struct_of_arrays.rs).
+I also use it in a real project, where I want to extend my type with additional metadata while keeping derive logic separated. It looks like this:
 ```rust
 #[derive(token_goblin::Snif)]
 enum Expr {
@@ -302,24 +301,24 @@ enum Expr {
     Add(Box<Expr>, Box<Expr>),
 }
 mod printer {
-  trait Printer {}g
+  trait Printer {}
   snif!(Expr in generate_printer!());
 }
 // ..
 ```
 
-## Do i need to rewrite declarative macros to proc-macro API?
+## Do I need to rewrite declarative macros to the proc-macro API?
 
-While proc-macro API is more Rust-like and powerful, one might want to rewrite all declarative macros to proc-macro API.
-But working with TokenStream introduce some boilerplate, and some macros should be kept as declarative.
+While the proc-macro API is more Rust-like and powerful, one might want to rewrite all declarative macros to the proc-macro API.
+But working with `TokenStream` introduces some boilerplate, and some macros should be kept declarative.
 
 <details>
-<summary>Example of TTs muncher rewrite as example</summary>
+<summary>Example of a TTs muncher rewrite</summary>
 
 
-[TTs muncher](https://lukaswirth.dev/tlborm/decl-macros/patterns/tt-muncher.html) is a technique of writing recursive declarative macros, to parse complex input.
+[TTs muncher](https://lukaswirth.dev/tlborm/decl-macros/patterns/tt-muncher.html) is a technique for writing recursive declarative macros to parse complex input.
 
-If we took example from link above (slightly modified):
+If we take the example from the link above (slightly modified):
 
 ```rust
 macro_rules! trace {
@@ -338,7 +337,7 @@ macro_rules! trace {
 }
 ```
 
-It expects input in format:
+It expects input in this format:
 
 ```rust
 let a = 10;
@@ -368,7 +367,7 @@ expands to something like:
 }
 ```
 
-and produces output into console:
+and produces this output in the console:
 ```
 x = 5
 y = 50
@@ -377,7 +376,7 @@ y = 50
 ```
 
 
-Rewritting it as to proc-macro `TokenStream` API, will increase amount of code, and contain a lot of boilerplate:
+Rewriting it as a proc-macro `TokenStream` API would increase the amount of code and add a lot of boilerplate:
 
 ```rust
 #[token_goblin::munch]
@@ -414,7 +413,7 @@ fn trace_cycle(input: TokenStream) {
 }
 ```
 
-Using `syn` with `syn-derive` might help with main logic:
+Using `syn` with `syn-derive` might help with the main logic:
 
 ```rust
 pub fn trace_syn(input: TraceInput) -> TokenStream {
@@ -448,9 +447,9 @@ See [example_readme/examples/ttmunch-replace.rs](example_readme/examples/ttmunch
 
 </details>
 
-With `token-goblin` you don't need to chose, since it allows you to combine both approaches.
+With `token-goblin`, you don't need to choose, since it allows you to combine both approaches.
 
-e.g. writing declarative macro as facade that will check patterns, and compute results in `proc-macro` API.
+For example, you can write a declarative macro as a facade that checks patterns and computes results in the `proc-macro` API.
 
 ```rust
 #[token_goblin::munch]
@@ -476,61 +475,61 @@ fn main() {
 }
 ```
 
-Uncommenting non ident expansions will fail at compile time:
+Uncommenting non-ident expansions will fail at compile time:
 ![fails](assets/decl-proc-fail.png)
 
-There still old but good crate `proc-macro-rules` that allows you to use declarative macros patterns directly in proc-macro API.
+There is still the old but good `proc-macro-rules` crate, which allows you to use declarative macro patterns directly in the proc-macro API.
 
 # Questions
 
-## Why it's named Token Goblin?
+## Why is it named Token Goblin?
 
-During thinkering about name, the ChatGPT 5.5 suggested this variant among others:
+While tinkering with the name, ChatGPT 5.5 suggested this variant among others:
 
 ![Token Goblin](assets/token-goblin-origin.png)
 
-Which i found ridiculous, especially after i saw [OpenAI post how their fighting "goblin" overuse by ChatGPT](https://openai.com/index/where-the-goblins-came-from/).
+I found it ridiculous, especially after I saw [OpenAI's post on how they are fighting "goblin" overuse by ChatGPT](https://openai.com/index/where-the-goblins-came-from/).
 
-Also the idea of "some magical entity that eats tokens" looks like a good metaphor for macros.
+Also, the idea of "some magical entity that eats tokens" seems like a good metaphor for macros.
 
 ## Why entrypoint macros named `munch` and `spit`?
 
 1. Because `munch` and `spit` fit well in "goblin" lore.
-2. I think that `#[munch] fn` would be a good replacement for existing [TTs muncher](https://lukaswirth.dev/tlborm/decl-macros/patterns/tt-muncher.html) - technique of writing recursive declarative macros, to parse complex input.
+2. I think that `#[munch] fn` would be a good replacement for the existing [TTs muncher](https://lukaswirth.dev/tlborm/decl-macros/patterns/tt-muncher.html), a technique for writing recursive declarative macros to parse complex input.
 
 ## Why not use `crabtime` or `inline-proc`?
 
-They both looks notmaintained.
+They both look unmaintained.
 
-`inline-proc` uses syn 1.0 and no updates for ~5-6 years. And doesn't compile anymore on modern rust versions.
+`inline-proc` uses syn 1.0 and has had no updates for ~5-6 years. It doesn't compile anymore on modern Rust versions.
 
-I have tried to contribute to `crabtime` https://github.com/wdanilo/crabtime/issues?q=author%3Avldm
-But looks like author is not interested in maintaining it anymore. There still issues related to build-cache.
+I have tried to contribute to `crabtime` at https://github.com/wdanilo/crabtime/issues?q=author%3Avldm,
+but it looks like the author is not interested in maintaining it anymore. There are still issues related to the build cache.
 
 `token-goblin` combines all the features from both `crabtime` and `inline-proc`, like:
 
 - using dylib to load proc-macro definition
 - support for workspace dependencies
-- support for attributes and derive macros helpers
+- support for attributes and derive macro helpers
 - mod and fn entrypoints
 
- and adds some extra:
+It also adds some extra:
 
 - Emit ide helper for Rust-Analyzer completion [ide-helper](token-goblin/src/ide_support.rs)
 - Allow span information to be preserved in output [span_recovery](token-goblin/src/span_recovery.rs)
 - Convert any panic to compile error [panic](runtime/src/wire.rs#L185)
-- Extendable interface for input and output [ux](runtime/src/ux.rs)
+- Extensible interface for input and output [ux](runtime/src/ux.rs)
+- A "reflection"-like macro to store tokens of some items and use them as input to another macro [snif](token-goblin/src/lib.rs#L311).
 
-And planned more:
+And more is planned:
 
-- Mapping panics/compile errors to `compile_error!` should show any error in right source location.
-- Support for `wasm` as feature that will enforce sandboxing of `charms`.
-- "reflection" like macro, to store tokens of some items, and use them as input to another macro.
+- Mapping panics/compile errors to `compile_error!` should show any error at the right source location.
+- Support for `wasm` as a feature that will enforce sandboxing of `charms`.
 
 ## Testing
 
-Most of tests are implemented as regular integration tests, or doctests dirrectly in macro library.
-Fixtures represents tests that need to be run with different environment (currently only toolchain, or cargo config).
+Most tests are implemented as regular integration tests or doctests directly in the macro library.
+Fixtures represent tests that need to be run with different environments (currently only toolchain or Cargo config).
 
 Fixtures can be run with:
 
@@ -540,21 +539,21 @@ cargo test -p token-goblin --test fixtures
 
 # Usage recommendations
 
-Some hints and recommendation for using `token-goblin` in your projects.
+Some hints and recommendations for using `token-goblin` in your projects.
 
 ## IDE support
 
-As with offline build, it is recommended to add `token-goblin-runtime` to `[dev-dependencies]` in your `Cargo.toml`. This will help rust-analyzer to find needed crate, and provide important semantic information for your macros.
+As with offline builds, it is recommended to add `token-goblin-runtime` to `[dev-dependencies]` in your `Cargo.toml`. This will help rust-analyzer find the needed crate and provide important semantic information for your macros.
 
-## Lazieness
+## Laziness
 
-`token-goblin::munch` provides `lazy` attribute, that allows enforcing lazieness of charm compilation.
+`token-goblin::munch` provides a `lazy` attribute that allows enforcing laziness of charm compilation.
 
-By default all charms generated by `token-goblin::munch` are eager. This means, that charm is compiled during expansion of `#[munch]` attribute, the users of `charm` only use compiled dylib.
+By default, all charms generated by `token-goblin::munch` are eager. This means that a charm is compiled during expansion of the `#[munch]` attribute, and users of the `charm` only use the compiled dylib.
 
-This setup is faster, since `charm` is compiled only once, and every users (expansion of `charm` itself) should skip compiliation step.
+This setup is faster, since `charm` is compiled only once, and every user (expansion of `charm` itself) skips the compilation step.
 
-But, during development, flycheck could call `cargo check` on broken code, and spam with errors, in vscode + lens this can slowdown IDE performance.
+But during development, flycheck could call `cargo check` on broken code and spam errors. In VS Code + Lens, this can slow down IDE performance.
 Therefore, you can set `lazy` to `true` in `#[token_goblin::munch]` attributes.
 
 ```rust
@@ -564,12 +563,12 @@ fn foo(input: TokenStream) -> TokenStream {
 }
 ```
 
-with this setup, `#[munch]` will not compile the `charm`, instead during `foo` expansion, compiliation will be triggered.
-Note: that for same code, compiliation is only triggered once, since `token-goblin` caches the compiled dylib.
+With this setup, `#[munch]` will not compile the `charm`; instead, compilation will be triggered during `foo` expansion.
+Note: for the same code, compilation is only triggered once, since `token-goblin` caches the compiled dylib.
 
 ## Debugging
 
-Also, you can set `TOKEN_GOBLIN_PRINT_LEVEL` environment variable to `1-4` to enable debug prints.
+You can also set the `TOKEN_GOBLIN_PRINT_LEVEL` environment variable to `1-4` to enable debug prints.
 ```bash
 1 - print basic info
 2 - print timings
@@ -577,13 +576,13 @@ Also, you can set `TOKEN_GOBLIN_PRINT_LEVEL` environment variable to `1-4` to en
 4 - print environment variables
 ```
 
-Also, you can use `println` / `eprintln` / `dbg` and other macros to debug your charms.
+You can also use `println` / `eprintln` / `dbg` and other macros to debug your charms.
 
 
 ## Share cache or not?
 
-By default all charms generated by `token-goblin::munch` will share same build-cache directory.
-Sharing cache, enforce cargo to lock directory, and therefore one "slow" charm can slow down all compilition process.
+By default, all charms generated by `token-goblin::munch` share the same build-cache directory.
+Sharing a cache forces Cargo to lock the directory, so one "slow" charm can slow down the whole compilation process.
 
 To avoid this, you can set `split_cache` to `true` in `#[token_goblin::munch]` attributes.
 
@@ -594,22 +593,22 @@ fn foo(input: TokenStream) -> TokenStream {
 }
 ```
 
-This will generate force charm to use separate build-cache directory, and therefore will not be affected by other charms.
+This will force the charm to use a separate build-cache directory, so it will not be affected by other charms.
 
-I recommend use `split_cache` for "big" charms only, that requires a lot of dependencies, or takes a lot of time to build. This is because charm with separated cache can be compiled in parallel with other charms.
+I recommend using `split_cache` only for "big" charms that require a lot of dependencies or take a lot of time to build. This is because a charm with a separate cache can be compiled in parallel with other charms.
 
-# Ceveats:
+# Caveats
 
 *Even a helpful goblin has its quirks. Mind these before you let it loose.*
 
-- only `proc-macro2::fallback` is used (no `proc-macro` api is available) in generated crates (which introduce some limitations)
-- mixed_site - is not supported by `proc_macro2::fallback`
-- we use `dev-dependencies` for `charms` dependencies, which cannot be optional (by design of cargo resolver), so one small macro may increase compile time by rebuilding all `dev-dependencies`.
-- `name` in `#[munch] fn name` should not be proc-macro generated, and is expected to have local source file.
-- on macos `dylibs` (newly generated chamrs) loading may took more time than compile itself (~300ms). This is [known issue](https://nnethercote.github.io/2025/09/04/faster-rust-builds-on-mac.html) related to XProtect. See the link above for workaround.
-- Rust-Analyzer will not analyze "optional" dependencies, and emit **"unresolved external crate"** errors on charms.
-To disable IDE support for charms, use `no_ide_helper` attribute `#[token_goblin::munch(dependencies = [..],no_ide_helper)]`
+- only `proc-macro2::fallback` is used (no `proc-macro` API is available) in generated crates, which introduces some limitations.
+- `mixed_site` is not supported by `proc_macro2::fallback`.
+- we use `dev-dependencies` for `charm` dependencies, which cannot be optional by design of the Cargo resolver, so one small macro may increase compile time by rebuilding all `dev-dependencies`.
+- `name` in `#[munch] fn name` should not be proc-macro generated and is expected to have a local source file.
+- on macOS, loading `dylibs` (newly generated charms) may take more time than compilation itself (~300ms). This is a [known issue](https://nnethercote.github.io/2025/09/04/faster-rust-builds-on-mac.html) related to XProtect. See the link above for a workaround.
+- rust-analyzer will not analyze "optional" dependencies and will emit **"unresolved external crate"** errors on charms.
+To disable IDE support for charms, use the `no_ide_helper` attribute: `#[token_goblin::munch(dependencies = [..],no_ide_helper)]`.
 
 ## Offline build
 
-Note: `token-goblin-runtime` is hardcoded dependency of generated crates, and might be not downloaded using `cargo fetch` or `cargo vendor`, in order to build offline, add `token-goblin-runtime` to `[dev-dependencies]` in your `Cargo.toml`.
+Note: `token-goblin-runtime` is a hardcoded dependency of generated crates and might not be downloaded by `cargo fetch` or `cargo vendor`. To build offline, add `token-goblin-runtime` to `[dev-dependencies]` in your `Cargo.toml`.
